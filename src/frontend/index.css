@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Sora: UI text ── */
+@font-face {
+  font-family: "Sora";
+  src: url("/assets/fonts/Sora-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── JetBrains Mono: data values ── */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/assets/fonts/JetBrainsMono-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── Cabinet Grotesk: headings ── */
+@font-face {
+  font-family: "Cabinet Grotesk";
+  src: url("/assets/fonts/CabinetGrotesk-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+
+    /* Dark terminal palette (default) */
+    --background: 0.12 0.012 250;
+    --foreground: 0.92 0.008 240;
+    --card: 0.16 0.014 250;
+    --card-foreground: 0.92 0.008 240;
+    --popover: 0.18 0.014 250;
+    --popover-foreground: 0.92 0.008 240;
+    --primary: 0.72 0.18 195;
+    --primary-foreground: 0.08 0.01 250;
+    --secondary: 0.22 0.016 250;
+    --secondary-foreground: 0.85 0.008 240;
+    --muted: 0.2 0.014 250;
+    --muted-foreground: 0.55 0.01 240;
+    --accent: 0.68 0.22 165;
+    --accent-foreground: 0.08 0.01 250;
+    --destructive: 0.62 0.22 25;
+    --destructive-foreground: 0.98 0 0;
+    --border: 0.28 0.018 250;
+    --input: 0.2 0.014 250;
+    --ring: 0.72 0.18 195;
+
+    /* Chart colors */
+    --chart-1: 0.72 0.18 195;
+    --chart-2: 0.68 0.22 165;
+    --chart-3: 0.78 0.18 80;
+    --chart-4: 0.72 0.2 30;
+    --chart-5: 0.65 0.22 295;
+
+    /* Semantic chart colors */
+    --up-color: 0.72 0.22 155;
+    --down-color: 0.62 0.22 25;
+    --neutral-color: 0.6 0.015 240;
+
+    --sidebar: 0.14 0.012 250;
+    --sidebar-foreground: 0.85 0.008 240;
+    --sidebar-primary: 0.72 0.18 195;
+    --sidebar-primary-foreground: 0.08 0.01 250;
+    --sidebar-accent: 0.2 0.014 250;
+    --sidebar-accent-foreground: 0.85 0.008 240;
+    --sidebar-border: 0.28 0.018 250;
+    --sidebar-ring: 0.72 0.18 195;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Sora", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .font-mono, code, pre {
+    font-family: "JetBrains Mono", monospace;
+  }
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: oklch(0.14 0.012 250);
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.3 0.018 250);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.4 0.022 250);
+}
+
+/* Chart scroll container */
+.chart-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
