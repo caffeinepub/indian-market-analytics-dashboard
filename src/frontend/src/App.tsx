@@ -600,6 +600,19 @@ const MACRO_RATES = QTR_DATES.map((d, i) => ({
   fxReserve: +(615 + i * 2 + (Math.random() - 0.5) * 10).toFixed(1),
 }));
 
+// Combined FX Reserve (MoM) + Repo Rate (QoQ) — aligned on QTR_DATES
+// We pick the MACRO_FXRESERVE value closest to each quarter's position.
+// MOM_DATES has 24 entries, QTR_DATES has 12 — each quarter maps to every 2nd month approx.
+const MACRO_FX_AND_RATES = QTR_DATES.map((d, i) => {
+  // Map quarter index to approximate monthly index (0-indexed, step ~2)
+  const monthIdx = Math.min(MACRO_FXRESERVE.length - 1, i * 2);
+  return {
+    date: d,
+    repoRate: i < 2 ? 4.0 : i < 4 ? 5.9 : i < 6 ? 6.25 : 6.5,
+    fxReserve: MACRO_FXRESERVE[monthIdx]?.value ?? 615,
+  };
+});
+
 // ─── SECTOR FII DATA ───────────────────────────────────────────────────────────
 const SECTORS = [
   "Automobile & Auto Components",
@@ -674,6 +687,397 @@ interface SectorStock {
 }
 const SECTOR_STOCKS: Record<string, SectorStock[]> = {};
 const SECTOR_REAL_STOCKS: Record<string, SectorStock[]> = {
+  "Automobile & Auto Components": [
+    {
+      name: "Maruti Suzuki India",
+      symbol: "MARUTI",
+      holding: 18.6,
+      change: 1.4,
+      netFlow: 1850,
+    },
+    {
+      name: "Tata Motors",
+      symbol: "TATAMOTORS",
+      holding: 22.3,
+      change: 2.8,
+      netFlow: 3200,
+    },
+    {
+      name: "Mahindra & Mahindra",
+      symbol: "MM",
+      holding: 19.7,
+      change: -0.6,
+      netFlow: -720,
+    },
+    {
+      name: "Bajaj Auto",
+      symbol: "BAJAJ-AUTO",
+      holding: 15.4,
+      change: 1.1,
+      netFlow: 980,
+    },
+    {
+      name: "Hero MotoCorp",
+      symbol: "HEROMOTOCO",
+      holding: 12.8,
+      change: 0.5,
+      netFlow: 430,
+    },
+    {
+      name: "Ashok Leyland",
+      symbol: "ASHOKLEY",
+      holding: 8.9,
+      change: -1.2,
+      netFlow: -560,
+    },
+    {
+      name: "TVS Motor",
+      symbol: "TVSMOTOR",
+      holding: 11.5,
+      change: 1.9,
+      netFlow: 870,
+    },
+    {
+      name: "Eicher Motors",
+      symbol: "EICHERMOT",
+      holding: 24.1,
+      change: 3.2,
+      netFlow: 1640,
+    },
+    {
+      name: "Samvardhana Motherson",
+      symbol: "MOTHERSON",
+      holding: 9.6,
+      change: 0.8,
+      netFlow: 390,
+    },
+    {
+      name: "Bosch",
+      symbol: "BOSCHLTD",
+      holding: 27.4,
+      change: -0.4,
+      netFlow: -310,
+    },
+  ],
+  "Capital Goods": [
+    {
+      name: "Larsen & Toubro",
+      symbol: "LT",
+      holding: 21.8,
+      change: 1.6,
+      netFlow: 2850,
+    },
+    {
+      name: "ABB India",
+      symbol: "ABB",
+      holding: 14.2,
+      change: 2.4,
+      netFlow: 1120,
+    },
+    {
+      name: "Siemens",
+      symbol: "SIEMENS",
+      holding: 16.9,
+      change: 1.8,
+      netFlow: 940,
+    },
+    {
+      name: "Bharat Electronics",
+      symbol: "BEL",
+      holding: 10.3,
+      change: 0.7,
+      netFlow: 520,
+    },
+    {
+      name: "Hindustan Aeronautics",
+      symbol: "HAL",
+      holding: 8.6,
+      change: 1.2,
+      netFlow: 680,
+    },
+    { name: "BHEL", symbol: "BHEL", holding: 6.4, change: -0.9, netFlow: -430 },
+    {
+      name: "Cummins India",
+      symbol: "CUMMINSIND",
+      holding: 19.5,
+      change: 2.1,
+      netFlow: 780,
+    },
+    {
+      name: "Thermax",
+      symbol: "THERMAX",
+      holding: 13.7,
+      change: 0.4,
+      netFlow: 290,
+    },
+    {
+      name: "KEC International",
+      symbol: "KEC",
+      holding: 11.2,
+      change: -1.5,
+      netFlow: -610,
+    },
+  ],
+  Chemicals: [
+    {
+      name: "Deepak Nitrite",
+      symbol: "DEEPAKNITR",
+      holding: 12.4,
+      change: 1.8,
+      netFlow: 740,
+    },
+    {
+      name: "Navin Fluorine",
+      symbol: "NAVINFLUOR",
+      holding: 16.8,
+      change: 2.5,
+      netFlow: 920,
+    },
+    { name: "SRF", symbol: "SRF", holding: 20.3, change: -0.7, netFlow: -480 },
+    {
+      name: "Tata Chemicals",
+      symbol: "TATACHEM",
+      holding: 9.7,
+      change: 0.9,
+      netFlow: 360,
+    },
+    {
+      name: "Astral",
+      symbol: "ASTRAL",
+      holding: 14.5,
+      change: 1.3,
+      netFlow: 590,
+    },
+    {
+      name: "PI Industries",
+      symbol: "PIIND",
+      holding: 22.1,
+      change: 3.0,
+      netFlow: 1380,
+    },
+  ],
+  "Fast Moving Consumer Goods": [
+    {
+      name: "Hindustan Unilever",
+      symbol: "HINDUNILVR",
+      holding: 17.3,
+      change: 0.8,
+      netFlow: 1450,
+    },
+    { name: "ITC", symbol: "ITC", holding: 14.6, change: -0.3, netFlow: -280 },
+    {
+      name: "Nestle India",
+      symbol: "NESTLEIND",
+      holding: 19.8,
+      change: 1.5,
+      netFlow: 860,
+    },
+    {
+      name: "Dabur India",
+      symbol: "DABUR",
+      holding: 11.4,
+      change: 0.6,
+      netFlow: 390,
+    },
+    {
+      name: "Marico",
+      symbol: "MARICO",
+      holding: 13.7,
+      change: -0.8,
+      netFlow: -510,
+    },
+    {
+      name: "Godrej Consumer",
+      symbol: "GODREJCP",
+      holding: 9.2,
+      change: 1.1,
+      netFlow: 460,
+    },
+    {
+      name: "Colgate-Palmolive India",
+      symbol: "COLPAL",
+      holding: 21.5,
+      change: 2.3,
+      netFlow: 1050,
+    },
+    {
+      name: "Britannia Industries",
+      symbol: "BRITANNIA",
+      holding: 16.1,
+      change: -1.4,
+      netFlow: -730,
+    },
+  ],
+  Healthcare: [
+    {
+      name: "Apollo Hospitals",
+      symbol: "APOLLOHOSP",
+      holding: 25.6,
+      change: 3.1,
+      netFlow: 2400,
+    },
+    {
+      name: "Max Healthcare",
+      symbol: "MAXHEALTH",
+      holding: 18.9,
+      change: 2.4,
+      netFlow: 1580,
+    },
+    {
+      name: "Fortis Healthcare",
+      symbol: "FORTIS",
+      holding: 14.3,
+      change: 1.7,
+      netFlow: 920,
+    },
+    {
+      name: "Narayana Hrudayalaya",
+      symbol: "NARAYANHRU",
+      holding: 11.8,
+      change: 0.9,
+      netFlow: 570,
+    },
+    { name: "KIMS", symbol: "KIMS", holding: 9.4, change: -0.5, netFlow: -280 },
+    {
+      name: "Metropolis Healthcare",
+      symbol: "METROPOLIS",
+      holding: 13.6,
+      change: 1.2,
+      netFlow: 640,
+    },
+    {
+      name: "Dr Lal PathLabs",
+      symbol: "LALPATHLAB",
+      holding: 16.2,
+      change: -1.8,
+      netFlow: -870,
+    },
+  ],
+  "Metals & Mining": [
+    {
+      name: "Tata Steel",
+      symbol: "TATASTEEL",
+      holding: 19.4,
+      change: 1.6,
+      netFlow: 1920,
+    },
+    {
+      name: "JSW Steel",
+      symbol: "JSWSTEEL",
+      holding: 22.7,
+      change: 2.8,
+      netFlow: 2650,
+    },
+    {
+      name: "Hindalco Industries",
+      symbol: "HINDALCO",
+      holding: 17.5,
+      change: -0.9,
+      netFlow: -840,
+    },
+    {
+      name: "Vedanta",
+      symbol: "VEDL",
+      holding: 14.8,
+      change: 1.3,
+      netFlow: 1120,
+    },
+    {
+      name: "Coal India",
+      symbol: "COALINDIA",
+      holding: 8.3,
+      change: 0.4,
+      netFlow: 380,
+    },
+    { name: "SAIL", symbol: "SAIL", holding: 5.9, change: -1.7, netFlow: -650 },
+    { name: "NMDC", symbol: "NMDC", holding: 7.2, change: 0.6, netFlow: 290 },
+  ],
+  Power: [
+    { name: "NTPC", symbol: "NTPC", holding: 12.8, change: 0.9, netFlow: 1240 },
+    {
+      name: "Power Grid Corp",
+      symbol: "POWERGRID",
+      holding: 10.5,
+      change: 0.5,
+      netFlow: 620,
+    },
+    {
+      name: "Tata Power",
+      symbol: "TATAPOWER",
+      holding: 15.3,
+      change: 1.8,
+      netFlow: 980,
+    },
+    {
+      name: "Adani Green Energy",
+      symbol: "ADANIGREEN",
+      holding: 18.6,
+      change: 2.4,
+      netFlow: 1850,
+    },
+    {
+      name: "JSW Energy",
+      symbol: "JSWENERGY",
+      holding: 13.9,
+      change: -0.7,
+      netFlow: -430,
+    },
+    {
+      name: "Torrent Power",
+      symbol: "TORNTPOWER",
+      holding: 11.4,
+      change: 1.2,
+      netFlow: 560,
+    },
+    { name: "NHPC", symbol: "NHPC", holding: 7.6, change: 0.3, netFlow: 190 },
+    { name: "SJVN", symbol: "SJVN", holding: 6.1, change: -0.4, netFlow: -230 },
+    { name: "CESC", symbol: "CESC", holding: 9.3, change: 0.8, netFlow: 370 },
+  ],
+  Realty: [
+    { name: "DLF", symbol: "DLF", holding: 21.4, change: 2.6, netFlow: 2980 },
+    {
+      name: "Godrej Properties",
+      symbol: "GODREJPROP",
+      holding: 17.8,
+      change: 1.9,
+      netFlow: 1640,
+    },
+    {
+      name: "Prestige Estates",
+      symbol: "PRESTIGE",
+      holding: 14.5,
+      change: 3.1,
+      netFlow: 1280,
+    },
+    {
+      name: "Oberoi Realty",
+      symbol: "OBEROIRLTY",
+      holding: 19.2,
+      change: -0.8,
+      netFlow: -620,
+    },
+    {
+      name: "Brigade Enterprises",
+      symbol: "BRIGADE",
+      holding: 11.7,
+      change: 1.4,
+      netFlow: 790,
+    },
+    {
+      name: "Phoenix Mills",
+      symbol: "PHOENIXLTD",
+      holding: 15.9,
+      change: 2.2,
+      netFlow: 1150,
+    },
+    {
+      name: "Lodha (Macrotech)",
+      symbol: "MACROTECH",
+      holding: 13.3,
+      change: -1.2,
+      netFlow: -840,
+    },
+  ],
   "Information Technology": [
     {
       name: "Infosys",
@@ -1085,89 +1489,117 @@ function CandlestickChart({
 
 // ─── PCR + OI CHART ────────────────────────────────────────────────────────────
 function PCROIPanel({ data, title }: { data: PCRBarData[]; title: string }) {
-  const chartW = Math.max(700, data.length * 22);
+  const chartW = Math.max(500, data.length * 18);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number>(0);
+  const touchScrollLeft = useRef<number>(0);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!scrollRef.current) return;
+    touchStartX.current = e.touches[0].clientX;
+    touchScrollLeft.current = scrollRef.current.scrollLeft;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!scrollRef.current) return;
+    const dx = touchStartX.current - e.touches[0].clientX;
+    scrollRef.current.scrollLeft = touchScrollLeft.current + dx;
+  };
+
   return (
     <div>
-      <div className="text-xs font-semibold text-slate-300 mb-1">{title}</div>
-      <div className="overflow-x-auto rounded-lg">
-        <div style={{ width: chartW }}>
-          {/* PCR Ratio Line */}
-          <div className="text-xs text-slate-500 mb-0.5 px-1">PCR Ratio</div>
-          <LineChart
-            width={chartW}
-            height={110}
-            data={data}
-            margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-            <XAxis
-              dataKey="date"
-              tick={{ fontSize: 8, fill: "#64748b" }}
-              interval={Math.floor(data.length / 8)}
-            />
-            <YAxis
-              tick={{ fontSize: 8, fill: "#64748b" }}
-              domain={[0.4, 2.0]}
-              width={30}
-            />
-            <Tooltip
-              {...ttStyle}
-              formatter={(v: number) => [v.toFixed(3), "PCR"]}
-            />
-            <ReferenceLine y={1} stroke="#475569" strokeDasharray="4 4" />
-            <Line
-              type="monotone"
-              dataKey="pcrRatio"
-              stroke="#3b82f6"
-              dot={false}
-              strokeWidth={2}
-              name="PCR"
-            />
-          </LineChart>
-          {/* PE / CE OI Histograms */}
-          <div className="text-xs text-slate-500 mt-1 mb-0.5 px-1">
-            Total OI Volume (PE = Green, CE = Red)
+      {title && (
+        <div className="text-xs font-semibold text-slate-300 mb-1">{title}</div>
+      )}
+      <div
+        className="overflow-x-auto rounded-lg"
+        ref={scrollRef}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+      >
+        {/* Side-by-side: PCR Ratio (left) | Total OI Volume (right) */}
+        <div style={{ minWidth: chartW * 2, display: "flex", gap: 8 }}>
+          {/* Left: PCR Ratio Line */}
+          <div style={{ flex: 1, minWidth: chartW }}>
+            <div className="text-xs text-slate-500 mb-0.5 px-1">PCR Ratio</div>
+            <LineChart
+              width={chartW}
+              height={200}
+              data={data}
+              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 8, fill: "#64748b" }}
+                interval={Math.floor(data.length / 8)}
+              />
+              <YAxis
+                tick={{ fontSize: 8, fill: "#64748b" }}
+                domain={[0.4, 2.0]}
+                width={30}
+              />
+              <Tooltip
+                {...ttStyle}
+                formatter={(v: number) => [v.toFixed(3), "PCR"]}
+              />
+              <ReferenceLine y={1} stroke="#475569" strokeDasharray="4 4" />
+              <Line
+                type="monotone"
+                dataKey="pcrRatio"
+                stroke="#3b82f6"
+                dot={false}
+                strokeWidth={2}
+                name="PCR"
+              />
+            </LineChart>
           </div>
-          <BarChart
-            width={chartW}
-            height={110}
-            data={data}
-            margin={{ top: 0, right: 8, bottom: 0, left: 0 }}
-            barCategoryGap={2}
-          >
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="#1e293b"
-              vertical={false}
-            />
-            <XAxis
-              dataKey="date"
-              tick={{ fontSize: 8, fill: "#64748b" }}
-              interval={Math.floor(data.length / 8)}
-            />
-            <YAxis
-              tick={{ fontSize: 8, fill: "#64748b" }}
-              tickFormatter={fmtK}
-              width={36}
-            />
-            <Tooltip
-              {...ttStyle}
-              formatter={(v: number, n: string) => [fmtK(v), n]}
-            />
-            <Legend wrapperStyle={{ fontSize: 10 }} />
-            <Bar
-              dataKey="peOI"
-              name="PE OI"
-              fill="#22c55e"
-              radius={[2, 2, 0, 0]}
-            />
-            <Bar
-              dataKey="ceOI"
-              name="CE OI"
-              fill="#ef4444"
-              radius={[2, 2, 0, 0]}
-            />
-          </BarChart>
+          {/* Right: PE / CE OI Histograms */}
+          <div style={{ flex: 1, minWidth: chartW }}>
+            <div className="text-xs text-slate-500 mb-0.5 px-1">
+              Total OI Volume (PE = Green, CE = Red)
+            </div>
+            <BarChart
+              width={chartW}
+              height={200}
+              data={data}
+              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              barCategoryGap={2}
+            >
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="#1e293b"
+                vertical={false}
+              />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 8, fill: "#64748b" }}
+                interval={Math.floor(data.length / 8)}
+              />
+              <YAxis
+                tick={{ fontSize: 8, fill: "#64748b" }}
+                tickFormatter={fmtK}
+                width={36}
+              />
+              <Tooltip
+                {...ttStyle}
+                formatter={(v: number, n: string) => [fmtK(v), n]}
+              />
+              <Legend wrapperStyle={{ fontSize: 10 }} />
+              <Bar
+                dataKey="peOI"
+                name="PE OI"
+                fill="#22c55e"
+                radius={[2, 2, 0, 0]}
+              />
+              <Bar
+                dataKey="ceOI"
+                name="CE OI"
+                fill="#ef4444"
+                radius={[2, 2, 0, 0]}
+              />
+            </BarChart>
+          </div>
         </div>
       </div>
     </div>
@@ -1486,7 +1918,19 @@ function IndexPricePanel({
           colorClass={isUp ? "text-green-400" : "text-red-400"}
         />
       </div>
-      <CandlestickChart data={candleData} height={260} />
+      <div
+        onWheel={(e) => {
+          e.preventDefault();
+          if (e.deltaY > 0) {
+            setVisibleCount((c) => Math.min(rawData.length, c + 10));
+          } else {
+            setVisibleCount((c) => Math.max(10, c - 10));
+          }
+        }}
+        style={{ touchAction: "none" }}
+      >
+        <CandlestickChart data={candleData} height={260} />
+      </div>
     </Card>
   );
 }
@@ -1725,7 +2169,19 @@ function StockPricePanel({ sym }: { sym: string }) {
           value={`${(last.volume / 1e5).toFixed(2)}L`}
         />
       </div>
-      <CandlestickChart data={candleData} height={230} />
+      <div
+        onWheel={(e) => {
+          e.preventDefault();
+          if (e.deltaY > 0) {
+            setVisibleCount((c) => Math.min(rawData.length, c + 10));
+          } else {
+            setVisibleCount((c) => Math.max(10, c - 10));
+          }
+        }}
+        style={{ touchAction: "none" }}
+      >
+        <CandlestickChart data={candleData} height={230} />
+      </div>
       <div className="mt-3">
         <div className="flex items-center gap-3 mb-2">
           <span className="text-xs text-slate-500">Volume</span>
@@ -2086,9 +2542,7 @@ function DailyIndicatorsCard() {
 }
 
 function MoMIndicatorsCard() {
-  const [sub, setSub] = useState<"cpiwpi" | "autogst" | "pmi" | "fxreserve">(
-    "cpiwpi",
-  );
+  const [sub, setSub] = useState<"cpiwpi" | "autogst" | "pmi">("cpiwpi");
   const subTabs = [
     { id: "cpiwpi" as const, label: "CPI & WPI", ocid: "macro.mom.cpiwpi.tab" },
     {
@@ -2097,11 +2551,6 @@ function MoMIndicatorsCard() {
       ocid: "macro.mom.autogst.tab",
     },
     { id: "pmi" as const, label: "PMI", ocid: "macro.mom.pmi.tab" },
-    {
-      id: "fxreserve" as const,
-      label: "FX Reserve",
-      ocid: "macro.mom.fxreserve.tab",
-    },
   ];
   return (
     <Card>
@@ -2282,55 +2731,23 @@ function MoMIndicatorsCard() {
           </ResponsiveContainer>
         </>
       )}
-      {sub === "fxreserve" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            India FX Reserves (USD Bn) — MoM
-          </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart
-              data={MACRO_FXRESERVE}
-              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                interval={3}
-              />
-              <YAxis
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                domain={["auto", "auto"]}
-                width={45}
-              />
-              <Tooltip
-                {...ttStyle}
-                formatter={(v: number) => [`$${v}B`, "FX Reserve"]}
-              />
-              <Line
-                type="monotone"
-                dataKey="value"
-                name="FX Reserve"
-                stroke="#a855f7"
-                dot={false}
-                strokeWidth={2}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </>
-      )}
     </Card>
   );
 }
 
 function QoQIndicatorsCard() {
-  const [sub, setSub] = useState<"gdpcad" | "rates">("gdpcad");
+  const [sub, setSub] = useState<"gdpcad" | "rates" | "fxreserve">("gdpcad");
   const subTabs = [
     { id: "gdpcad" as const, label: "GDP & CAD", ocid: "macro.qoq.gdpcad.tab" },
     {
       id: "rates" as const,
       label: "Interest Rates & FX Reserve",
       ocid: "macro.qoq.interestrates.tab",
+    },
+    {
+      id: "fxreserve" as const,
+      label: "FX Reserve & Rates",
+      ocid: "macro.qoq.fxreserve.tab",
     },
   ];
   return (
@@ -2450,6 +2867,62 @@ function QoQIndicatorsCard() {
                 name="FX Reserve ($B)"
                 stroke="#f97316"
                 dot={false}
+                strokeWidth={2}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </>
+      )}
+      {sub === "fxreserve" && (
+        <>
+          <div className="text-xs text-slate-500 mb-2">
+            FX Reserve USD Bn (Purple, left) &amp; Repo Rate % (Blue step-line,
+            right) — QoQ aligned
+          </div>
+          <ResponsiveContainer width="100%" height={240}>
+            <ComposedChart
+              data={MACRO_FX_AND_RATES}
+              margin={{ top: 4, right: 44, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#64748b" }} />
+              <YAxis
+                yAxisId="left"
+                tick={{ fontSize: 9, fill: "#64748b" }}
+                domain={["auto", "auto"]}
+                width={46}
+                tickFormatter={(v: number) => `$${v}B`}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fontSize: 9, fill: "#64748b" }}
+                width={34}
+                tickFormatter={(v: number) => `${v}%`}
+              />
+              <Tooltip
+                {...ttStyle}
+                formatter={(v: number, n: string) =>
+                  n === "FX Reserve (USD Bn)" ? [`$${v}B`, n] : [`${v}%`, n]
+                }
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="fxReserve"
+                name="FX Reserve (USD Bn)"
+                stroke="#a855f7"
+                dot={false}
+                strokeWidth={2}
+              />
+              <Line
+                yAxisId="right"
+                type="stepAfter"
+                dataKey="repoRate"
+                name="Repo Rate %"
+                stroke="#3b82f6"
+                dot={{ fill: "#3b82f6", r: 4 }}
                 strokeWidth={2}
               />
             </ComposedChart>
