@@ -115,14 +115,28 @@ interface PCRBarData {
   ceOI: number;
 }
 
-function genPCROIData(n: number, dates?: Date[]): PCRBarData[] {
-  const ds = dates ?? genDates(n);
+interface ExtendedPCRBarData extends PCRBarData {
+  year: number;
+  month: number;
+}
+
+// Extended PCR OI generator with year+month fields for filtering
+// Generates ~1500 trading days (~6 years) back from 2026-03-03
+function genPCROIDataFull(n: number): ExtendedPCRBarData[] {
+  const dates = genDates(n);
   let pcr = 0.9;
-  return ds.slice(-n).map((d) => {
+  return dates.map((d) => {
     pcr = Math.max(0.5, Math.min(1.8, pcr + (Math.random() - 0.49) * 0.06));
     const ceOI = rndi(8_000_000, 25_000_000);
     const peOI = Math.round(ceOI * pcr);
-    return { date: formatDate(d), pcrRatio: +pcr.toFixed(3), peOI, ceOI };
+    return {
+      date: formatDate(d),
+      pcrRatio: +pcr.toFixed(3),
+      peOI,
+      ceOI,
+      year: d.getFullYear(),
+      month: d.getMonth(),
+    };
   });
 }
 
@@ -130,15 +144,16 @@ function genPCROIData(n: number, dates?: Date[]): PCRBarData[] {
 const NIFTY_DATA = genPriceSeries(300, 22800, 120);
 const BANKNIFTY_DATA = genPriceSeries(300, 48500, 380);
 
-const NIFTY_PCR_OI: Record<string, PCRBarData[]> = {
-  CW: genPCROIData(100),
-  NW: genPCROIData(100),
-  CM: genPCROIData(100),
-  NM: genPCROIData(100),
+// Full history PCR OI (2020-01 → 2026-03, ~1500 trading days)
+const NIFTY_PCR_OI_FULL: Record<string, ExtendedPCRBarData[]> = {
+  CW: genPCROIDataFull(1500),
+  NW: genPCROIDataFull(1500),
+  CM: genPCROIDataFull(1500),
+  NM: genPCROIDataFull(1500),
 };
-const BANKNIFTY_PCR_OI: Record<string, PCRBarData[]> = {
-  CM: genPCROIData(100),
-  NM: genPCROIData(100),
+const BANKNIFTY_PCR_OI_FULL: Record<string, ExtendedPCRBarData[]> = {
+  CM: genPCROIDataFull(1500),
+  NM: genPCROIDataFull(1500),
 };
 
 // ─── 200 NSE STOCKS ────────────────────────────────────────────────────────────
@@ -473,145 +488,853 @@ function getStockData(sym: string): OHLCWithVolume[] {
   return stockDataCache[sym];
 }
 
-const stockPCROICache: Record<string, PCRBarData[]> = {};
-function getStockPCROI(sym: string, expiry: string): PCRBarData[] {
-  const key = `${sym}_${expiry}`;
-  if (!stockPCROICache[key]) stockPCROICache[key] = genPCROIData(60);
-  return stockPCROICache[key];
+const stockPCROIFullCache: Record<string, ExtendedPCRBarData[]> = {};
+function getStockPCROIFull(sym: string, expiry: string): ExtendedPCRBarData[] {
+  const key = `${sym}_${expiry}_full`;
+  if (!stockPCROIFullCache[key])
+    stockPCROIFullCache[key] = genPCROIDataFull(1500);
+  return stockPCROIFullCache[key];
+}
+
+// OI Year options: 2020 to current year
+function getOIYearOptions(): number[] {
+  const currentYear = new Date().getFullYear();
+  const years: number[] = [];
+  for (let y = 2020; y <= currentYear; y++) years.push(y);
+  return years;
+}
+const OI_YEAR_OPTIONS = getOIYearOptions();
+
+// Given oiYear + oiMonth, compute the 4-month window
+// Returns array of {year, month} for [oiMonth-3, oiMonth-2, oiMonth-1, oiMonth]
+function getFourMonthRange(
+  year: number,
+  month: number,
+): { year: number; month: number }[] {
+  const result: { year: number; month: number }[] = [];
+  for (let offset = 3; offset >= 0; offset--) {
+    let m = month - offset;
+    let y = year;
+    while (m < 0) {
+      m += 12;
+      y--;
+    }
+    result.push({ year: y, month: m });
+  }
+  return result;
+}
+
+// Filter extended PCR data to 4-month window
+function filterPCROIFourMonths(
+  data: ExtendedPCRBarData[],
+  year: number,
+  month: number,
+): ExtendedPCRBarData[] {
+  const range = getFourMonthRange(year, month);
+  return data.filter((d) =>
+    range.some((r) => r.year === d.year && r.month === d.month),
+  );
+}
+
+// Merge extended PCR data sources filtered by 4-month window
+function mergePCROIFiltered(
+  source: Record<string, ExtendedPCRBarData[]>,
+  selected: Record<string, boolean>,
+  year: number,
+  month: number,
+): PCRBarData[] {
+  const active = Object.keys(selected).filter((e) => selected[e]);
+  if (!active.length) return [];
+  // Collect all filtered entries from all active expiries, sorted by date
+  const allEntries: ExtendedPCRBarData[] = [];
+  for (const e of active) {
+    const filtered = filterPCROIFourMonths(source[e] ?? [], year, month);
+    allEntries.push(...filtered);
+  }
+  // Group by date string and merge
+  const byDate = new Map<string, { peOI: number; ceOI: number }>();
+  for (const entry of allEntries) {
+    const existing = byDate.get(entry.date);
+    if (existing) {
+      existing.peOI += entry.peOI;
+      existing.ceOI += entry.ceOI;
+    } else {
+      byDate.set(entry.date, { peOI: entry.peOI, ceOI: entry.ceOI });
+    }
+  }
+  // Build sorted result
+  return Array.from(byDate.entries())
+    .sort(([a], [b]) => {
+      // dates are DD/MM — sort by month first, then day within the 4-month window
+      const [da, ma] = a.split("/").map(Number);
+      const [db, mb] = b.split("/").map(Number);
+      if (ma !== mb) return ma - mb;
+      return da - db;
+    })
+    .map(([date, { peOI, ceOI }]) => ({
+      date,
+      pcrRatio: ceOI > 0 ? +(peOI / ceOI).toFixed(3) : 0,
+      peOI,
+      ceOI,
+    }));
 }
 
 // ─── MACRO DATA ────────────────────────────────────────────────────────────────
-function genDailyMacro(base: number, vol: number, days = 300) {
-  const dates = genDates(days + 30);
+
+// Helper: year options from 2005 to current year
+function getYearOptions(): number[] {
+  const currentYear = new Date().getFullYear();
+  const years: number[] = [];
+  for (let y = 2005; y <= currentYear; y++) years.push(y);
+  return years;
+}
+const YEAR_OPTIONS = getYearOptions();
+const MONTH_NAMES = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+// Extended daily macro generator — returns objects with year + month for filtering
+interface DailyMacroEntry {
+  date: string;
+  value: number;
+  year: number;
+  month: number;
+}
+function genDailyMacroFull(base: number, vol: number): DailyMacroEntry[] {
+  // Generate ~5600 trading days back from 2026-03-03 (covers back to Jan 2005)
+  const dates = genDates(5600);
   let v = base;
   return dates.map((d) => {
     v = Math.max(
-      base * 0.85,
-      Math.min(base * 1.15, v + (Math.random() - 0.49) * vol),
+      base * 0.7,
+      Math.min(base * 1.3, v + (Math.random() - 0.49) * vol),
     );
-    return { date: formatDate(d), value: +v.toFixed(3) };
+    return {
+      date: formatDate(d),
+      value: +v.toFixed(3),
+      year: d.getFullYear(),
+      month: d.getMonth(),
+    };
   });
 }
 
-const MACRO_USDINT = genDailyMacro(83.5, 0.15);
-const MACRO_FII = genDates(300).map((d) => ({
+interface FIIDailyEntry {
+  date: string;
+  fii: number;
+  dii: number;
+  year: number;
+  month: number;
+}
+interface CrudeDailyEntry {
+  date: string;
+  wti: number;
+  brent: number;
+  year: number;
+  month: number;
+}
+interface GSECDailyEntry {
+  date: string;
+  y3: number;
+  y5: number;
+  y10: number;
+  year: number;
+  month: number;
+}
+
+const ALL_DAILY_DATES = genDates(5600);
+const MACRO_USDINT_FULL: DailyMacroEntry[] = genDailyMacroFull(83.5, 0.15);
+const MACRO_FII_FULL: FIIDailyEntry[] = ALL_DAILY_DATES.map((d) => ({
   date: formatDate(d),
   fii: +rnd(-3500, 4000).toFixed(0),
   dii: +rnd(-1500, 3500).toFixed(0),
+  year: d.getFullYear(),
+  month: d.getMonth(),
 }));
-const MACRO_CRUDE = genDates(300).map((d) => ({
+const MACRO_CRUDE_FULL: CrudeDailyEntry[] = ALL_DAILY_DATES.map((d) => ({
   date: formatDate(d),
-  wti: +rnd(72, 86).toFixed(2),
-  brent: +rnd(76, 90).toFixed(2),
+  wti: +rnd(60, 115).toFixed(2),
+  brent: +rnd(64, 120).toFixed(2),
+  year: d.getFullYear(),
+  month: d.getMonth(),
 }));
-const MACRO_GSEC = genDates(300).map((d) => ({
+const MACRO_GSEC_FULL: GSECDailyEntry[] = ALL_DAILY_DATES.map((d) => ({
   date: formatDate(d),
   y3: +(6.5 + Math.random() * 0.6).toFixed(3),
   y5: +(6.8 + Math.random() * 0.6).toFixed(3),
   y10: +(7.0 + Math.random() * 0.5).toFixed(3),
+  year: d.getFullYear(),
+  month: d.getMonth(),
 }));
 
-function genMonthlyDates(n: number): string[] {
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-  const dates: string[] = [];
+// Extended monthly data — 252 months back from Mar 2026 = covers Jan 2005
+interface MonthlyEntry {
+  label: string;
+  year: number;
+  month: number;
+}
+function genMonthlyDatesFull(n: number): MonthlyEntry[] {
+  const entries: MonthlyEntry[] = [];
   const base = new Date(2026, 2, 1);
   for (let i = n - 1; i >= 0; i--) {
     const d = new Date(base);
     d.setMonth(d.getMonth() - i);
-    dates.push(
-      `${months[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,
-    );
+    entries.push({
+      label: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,
+      year: d.getFullYear(),
+      month: d.getMonth(),
+    });
   }
-  return dates;
+  return entries;
 }
 
-const MOM_DATES = genMonthlyDates(24);
-const MACRO_CPI_WPI = MOM_DATES.map((d, i) => ({
-  date: d,
-  cpi: +(5.0 + Math.sin(i * 0.4) * 0.8 + (Math.random() - 0.5) * 0.4).toFixed(
-    2,
-  ),
-  wpi: +(2.5 + Math.sin(i * 0.35) * 1.2 + (Math.random() - 0.5) * 0.6).toFixed(
-    2,
-  ),
-}));
-const MACRO_AUTO_GST = MOM_DATES.map((d, i) => ({
-  date: d,
-  autoSales: +(38 + Math.sin(i * 0.3) * 4 + (Math.random() - 0.5) * 3).toFixed(
-    1,
-  ),
-  gst: +(1.82 + i * 0.003 + (Math.random() - 0.5) * 0.05).toFixed(3),
-}));
-const MACRO_PMI = MOM_DATES.map((d, i) => ({
-  date: d,
-  mfg: +(56.5 + Math.sin(i * 0.25) * 2 + (Math.random() - 0.5) * 1.5).toFixed(
-    1,
-  ),
-  services: +(
-    58.5 +
-    Math.sin(i * 0.3) * 2.5 +
-    (Math.random() - 0.5) * 1.8
-  ).toFixed(1),
-}));
-const MACRO_FXRESERVE = MOM_DATES.map((d, i) => ({
-  date: d,
-  value: +(615 + i * 0.8 + (Math.random() - 0.5) * 8).toFixed(1),
-}));
+const MOM_DATES_FULL = genMonthlyDatesFull(252);
 
-const QTR_DATES = [
-  "Q2FY22",
-  "Q3FY22",
-  "Q4FY22",
-  "Q1FY23",
-  "Q2FY23",
-  "Q3FY23",
-  "Q4FY23",
-  "Q1FY24",
-  "Q2FY24",
-  "Q3FY24",
-  "Q4FY24",
-  "Q1FY25",
+interface CPIWPIEntry {
+  date: string;
+  cpi: number;
+  wpi: number;
+  year: number;
+  month: number;
+}
+interface AutoGSTEntry {
+  date: string;
+  autoSales: number;
+  gst: number;
+  year: number;
+  month: number;
+}
+interface PMIEntry {
+  date: string;
+  mfg: number;
+  services: number;
+  year: number;
+  month: number;
+}
+interface FXReserveEntry {
+  date: string;
+  value: number;
+  year: number;
+  month: number;
+}
+
+const MACRO_CPI_WPI_FULL: CPIWPIEntry[] = MOM_DATES_FULL.map(
+  ({ label, year, month }, i) => ({
+    date: label,
+    cpi: +(5.0 + Math.sin(i * 0.4) * 0.8 + (Math.random() - 0.5) * 0.4).toFixed(
+      2,
+    ),
+    wpi: +(
+      2.5 +
+      Math.sin(i * 0.35) * 1.2 +
+      (Math.random() - 0.5) * 0.6
+    ).toFixed(2),
+    year,
+    month,
+  }),
+);
+const MACRO_AUTO_GST_FULL: AutoGSTEntry[] = MOM_DATES_FULL.map(
+  ({ label, year, month }, i) => ({
+    date: label,
+    autoSales: +(
+      38 +
+      Math.sin(i * 0.3) * 4 +
+      (Math.random() - 0.5) * 3
+    ).toFixed(1),
+    gst: +(1.82 + (i / 252) * 0.8 + (Math.random() - 0.5) * 0.05).toFixed(3),
+    year,
+    month,
+  }),
+);
+const MACRO_PMI_FULL: PMIEntry[] = MOM_DATES_FULL.map(
+  ({ label, year, month }, i) => ({
+    date: label,
+    mfg: +(56.5 + Math.sin(i * 0.25) * 2 + (Math.random() - 0.5) * 1.5).toFixed(
+      1,
+    ),
+    services: +(
+      58.5 +
+      Math.sin(i * 0.3) * 2.5 +
+      (Math.random() - 0.5) * 1.8
+    ).toFixed(1),
+    year,
+    month,
+  }),
+);
+const MACRO_FXRESERVE_FULL: FXReserveEntry[] = MOM_DATES_FULL.map(
+  ({ label, year, month }, i) => ({
+    date: label,
+    value: +(350 + (i / 252) * 280 + (Math.random() - 0.5) * 12).toFixed(1),
+    year,
+    month,
+  }),
+);
+
+// Extended quarterly data — Q1FY06 through Q4FY25 (80 quarters)
+interface QuarterEntry {
+  label: string;
+  fyYear: number; // FY year number e.g. 2021 for FY21
+  qNum: number; // 1–4
+  calStartYear: number; // calendar year when this quarter starts
+}
+function genFullQtrDates(): QuarterEntry[] {
+  const entries: QuarterEntry[] = [];
+  // FY06 = Apr 2005 – Mar 2006, Q1FY06 = Apr-Jun 2005 (calStartYear=2005)
+  // FY25 = Apr 2024 – Mar 2025, Q4FY25 = Jan-Mar 2025 (calStartYear=2025)
+  for (let fy = 6; fy <= 25; fy++) {
+    const fyYear = 2000 + fy;
+    for (let q = 1; q <= 4; q++) {
+      // Q1 = Apr-Jun (calStart = fyYear-1), Q2 = Jul-Sep (calStart = fyYear-1)
+      // Q3 = Oct-Dec (calStart = fyYear-1), Q4 = Jan-Mar (calStart = fyYear)
+      const calStartYear = q <= 3 ? fyYear - 1 : fyYear;
+      entries.push({
+        label: `Q${q}FY${fy.toString().padStart(2, "0")}`,
+        fyYear,
+        qNum: q,
+        calStartYear,
+      });
+    }
+  }
+  return entries;
+}
+
+const QTR_DATES_FULL = genFullQtrDates();
+
+interface GDPCADEntry {
+  date: string;
+  gdp: number;
+  cad: number;
+  fyYear: number;
+  calStartYear: number;
+}
+interface RatesEntry {
+  date: string;
+  repoRate: number;
+  fxReserve: number;
+  fyYear: number;
+  calStartYear: number;
+}
+interface FXAndRatesEntry {
+  date: string;
+  repoRate: number;
+  fxReserve: number;
+  fyYear: number;
+  calStartYear: number;
+}
+
+function getRepoRate(fyYear: number, qNum: number): number {
+  // Simulate historical repo rate progression
+  if (fyYear <= 8) return 6.0;
+  if (fyYear <= 10) return 7.25;
+  if (fyYear <= 12) return 8.0;
+  if (fyYear <= 14) return 8.0;
+  if (fyYear <= 16) return 6.75;
+  if (fyYear <= 18) return 6.0;
+  if (fyYear <= 20) return 5.15;
+  if (fyYear <= 21) return 4.0;
+  if (fyYear <= 22) return qNum <= 2 ? 4.0 : 4.9;
+  if (fyYear <= 23) return qNum <= 1 ? 5.9 : 6.25;
+  return 6.5;
+}
+
+const MACRO_GDP_CAD_FULL: GDPCADEntry[] = QTR_DATES_FULL.map(
+  ({ label, fyYear, calStartYear }, i) => ({
+    date: label,
+    gdp: +(6.5 + Math.sin(i * 0.2) * 1.5 + (Math.random() - 0.5) * 0.5).toFixed(
+      1,
+    ),
+    cad: +(
+      -1.8 +
+      Math.sin(i * 0.18) * 0.8 +
+      (Math.random() - 0.5) * 0.3
+    ).toFixed(2),
+    fyYear,
+    calStartYear,
+  }),
+);
+
+const MACRO_RATES_FULL: RatesEntry[] = QTR_DATES_FULL.map(
+  ({ label, fyYear, qNum, calStartYear }, i) => ({
+    date: label,
+    repoRate: getRepoRate(fyYear, qNum),
+    fxReserve: +(200 + (i / 80) * 430 + (Math.random() - 0.5) * 15).toFixed(1),
+    fyYear,
+    calStartYear,
+  }),
+);
+
+const MACRO_FX_AND_RATES_FULL: FXAndRatesEntry[] = QTR_DATES_FULL.map(
+  ({ label, fyYear, qNum, calStartYear }, i) => {
+    // Map to approximate FX reserve from full monthly data
+    const monthIdx = Math.min(
+      MACRO_FXRESERVE_FULL.length - 1,
+      Math.round(i * (252 / 80)),
+    );
+    return {
+      date: label,
+      repoRate: getRepoRate(fyYear, qNum),
+      fxReserve: MACRO_FXRESERVE_FULL[monthIdx]?.value ?? 500,
+      fyYear,
+      calStartYear,
+    };
+  },
+);
+
+// Legacy short aliases retained as fallbacks (unused by current cards)
+const _MOM_DATES = MOM_DATES_FULL.slice(-24).map((e) => e.label);
+const _MACRO_CPI_WPI = MACRO_CPI_WPI_FULL.slice(-24).map(
+  ({ date, cpi, wpi }) => ({ date, cpi, wpi }),
+);
+const _MACRO_AUTO_GST = MACRO_AUTO_GST_FULL.slice(-24).map(
+  ({ date, autoSales, gst }) => ({ date, autoSales, gst }),
+);
+const _MACRO_PMI = MACRO_PMI_FULL.slice(-24).map(({ date, mfg, services }) => ({
+  date,
+  mfg,
+  services,
+}));
+const _MACRO_FXRESERVE = MACRO_FXRESERVE_FULL.slice(-24).map(
+  ({ date, value }) => ({ date, value }),
+);
+const _QTR_DATES = QTR_DATES_FULL.slice(-12).map((e) => e.label);
+const _MACRO_GDP_CAD = MACRO_GDP_CAD_FULL.slice(-12).map(
+  ({ date, gdp, cad }) => ({ date, gdp, cad }),
+);
+const _MACRO_RATES = MACRO_RATES_FULL.slice(-12).map(
+  ({ date, repoRate, fxReserve }) => ({ date, repoRate, fxReserve }),
+);
+const _MACRO_FX_AND_RATES = MACRO_FX_AND_RATES_FULL.slice(-12).map(
+  ({ date, repoRate, fxReserve }) => ({ date, repoRate, fxReserve }),
+);
+const _MACRO_USDINT = MACRO_USDINT_FULL.slice(-300).map(({ date, value }) => ({
+  date,
+  value,
+}));
+// Suppress unused-variable warnings on intentional stubs
+void _MOM_DATES;
+void _MACRO_CPI_WPI;
+void _MACRO_AUTO_GST;
+void _MACRO_PMI;
+void _MACRO_FXRESERVE;
+void _QTR_DATES;
+void _MACRO_GDP_CAD;
+void _MACRO_RATES;
+void _MACRO_FX_AND_RATES;
+void _MACRO_USDINT;
+
+// ─── NIFTY INDICES DATA ────────────────────────────────────────────────────────
+const NIFTY_INDICES = [
+  "NIFTY50",
+  "BANKNIFTY",
+  "NIFTY NEXT 50",
+  "NIFTY AUTO",
+  "NIFTY FMCG",
+  "NIFTY IT",
+  "NIFTY MEDIA",
+  "NIFTY METAL",
+  "NIFTY PHARMA",
+  "NIFTY PSU BANK",
+  "NIFTY PRIVATE BANK",
+  "NIFTY REALTY",
+  "NIFTY HEALTHCARE",
+  "NIFTY CONSUMER DURABLES",
+  "NIFTY OIL & GAS",
+  "NIFTY COMMODITIES",
+  "NIFTY INDIA CONSUMPTION",
+  "NIFTY ENERGY",
+  "NIFTY INFRASTRUCTURE",
+  "NIFTY INDIA DEFENCE",
+  "NIFTY INDIA TOURISM",
+  "NIFTY CAPITAL MARKETS",
+  "NIFTY EV & NEW AGE AUTOMOTIVE",
+  "NIFTY MOBILITY",
+  "NIFTY RURAL",
 ];
-const MACRO_GDP_CAD = QTR_DATES.map((d, i) => ({
-  date: d,
-  gdp: +(6.5 + Math.sin(i * 0.5) * 1.2 + (Math.random() - 0.5) * 0.5).toFixed(
-    1,
-  ),
-  cad: +(-1.8 + Math.sin(i * 0.4) * 0.6 + (Math.random() - 0.5) * 0.3).toFixed(
-    2,
-  ),
-}));
-const MACRO_RATES = QTR_DATES.map((d, i) => ({
-  date: d,
-  repoRate: i < 2 ? 4.0 : i < 4 ? 5.9 : i < 6 ? 6.25 : 6.5,
-  fxReserve: +(615 + i * 2 + (Math.random() - 0.5) * 10).toFixed(1),
-}));
 
-// Combined FX Reserve (MoM) + Repo Rate (QoQ) — aligned on QTR_DATES
-// We pick the MACRO_FXRESERVE value closest to each quarter's position.
-// MOM_DATES has 24 entries, QTR_DATES has 12 — each quarter maps to every 2nd month approx.
-const MACRO_FX_AND_RATES = QTR_DATES.map((d, i) => {
-  // Map quarter index to approximate monthly index (0-indexed, step ~2)
-  const monthIdx = Math.min(MACRO_FXRESERVE.length - 1, i * 2);
-  return {
-    date: d,
-    repoRate: i < 2 ? 4.0 : i < 4 ? 5.9 : i < 6 ? 6.25 : 6.5,
-    fxReserve: MACRO_FXRESERVE[monthIdx]?.value ?? 615,
-  };
-});
+interface IndexConstituent {
+  name: string;
+  symbol: string;
+}
+
+const NIFTY_INDEX_STOCKS: Record<string, IndexConstituent[]> = {
+  NIFTY50: [
+    { name: "Reliance Industries", symbol: "RELIANCE" },
+    { name: "Tata Consultancy Services", symbol: "TCS" },
+    { name: "HDFC Bank", symbol: "HDFCBANK" },
+    { name: "Bharti Airtel", symbol: "BHARTIARTL" },
+    { name: "ICICI Bank", symbol: "ICICIBANK" },
+    { name: "Infosys", symbol: "INFY" },
+    { name: "State Bank of India", symbol: "SBIN" },
+    { name: "LIC of India", symbol: "LICI" },
+    { name: "ITC", symbol: "ITC" },
+    { name: "Hindustan Unilever", symbol: "HINDUNILVR" },
+    { name: "Larsen & Toubro", symbol: "LT" },
+    { name: "Bajaj Finance", symbol: "BAJFINANCE" },
+    { name: "HCL Technologies", symbol: "HCLTECH" },
+    { name: "Maruti Suzuki India", symbol: "MARUTI" },
+    { name: "Sun Pharmaceutical", symbol: "SUNPHARMA" },
+    { name: "Adani Enterprises", symbol: "ADANIENT" },
+    { name: "Kotak Mahindra Bank", symbol: "KOTAKBANK" },
+    { name: "Titan Company", symbol: "TITAN" },
+    { name: "Axis Bank", symbol: "AXISBANK" },
+    { name: "Asian Paints", symbol: "ASIANPAINT" },
+    { name: "Wipro", symbol: "WIPRO" },
+    { name: "UltraTech Cement", symbol: "ULTRACEMCO" },
+    { name: "Nestle India", symbol: "NESTLEIND" },
+    { name: "ONGC", symbol: "ONGC" },
+    { name: "NTPC", symbol: "NTPC" },
+    { name: "Power Grid Corp", symbol: "POWERGRID" },
+    { name: "Mahindra & Mahindra", symbol: "MM" },
+    { name: "Bajaj Finserv", symbol: "BAJAJFINSV" },
+    { name: "JSW Steel", symbol: "JSWSTEEL" },
+    { name: "Tata Motors", symbol: "TATAMOTORS" },
+    { name: "Tata Steel", symbol: "TATASTEEL" },
+    { name: "Adani Ports & SEZ", symbol: "ADANIPORTS" },
+    { name: "Coal India", symbol: "COALINDIA" },
+    { name: "Tech Mahindra", symbol: "TECHM" },
+    { name: "Hindalco Industries", symbol: "HINDALCO" },
+    { name: "Grasim Industries", symbol: "GRASIM" },
+    { name: "Dr Reddys Laboratories", symbol: "DRREDDY" },
+    { name: "Cipla", symbol: "CIPLA" },
+    { name: "IndusInd Bank", symbol: "INDUSINDBK" },
+    { name: "Eicher Motors", symbol: "EICHERMOT" },
+    { name: "Britannia Industries", symbol: "BRITANNIA" },
+    { name: "Apollo Hospitals", symbol: "APOLLOHOSP" },
+    { name: "Tata Consumer Products", symbol: "TATACONSUM" },
+    { name: "BPCL", symbol: "BPCL" },
+    { name: "Divis Laboratories", symbol: "DIVISLAB" },
+    { name: "Hero MotoCorp", symbol: "HEROMOTOCO" },
+    { name: "Shree Cement", symbol: "SHREECEM" },
+    { name: "Bajaj Auto", symbol: "BAJAJ-AUTO" },
+    { name: "SBI Life Insurance", symbol: "SBILIFE" },
+    { name: "HDFC Life Insurance", symbol: "HDFCLIFE" },
+  ],
+  BANKNIFTY: [
+    { name: "HDFC Bank", symbol: "HDFCBANK" },
+    { name: "ICICI Bank", symbol: "ICICIBANK" },
+    { name: "State Bank of India", symbol: "SBIN" },
+    { name: "Kotak Mahindra Bank", symbol: "KOTAKBANK" },
+    { name: "Axis Bank", symbol: "AXISBANK" },
+    { name: "IndusInd Bank", symbol: "INDUSINDBK" },
+    { name: "Punjab National Bank", symbol: "PNB" },
+    { name: "Bank of Baroda", symbol: "BANKBARODA" },
+    { name: "Federal Bank", symbol: "FEDERALBNK" },
+    { name: "IDFC First Bank", symbol: "IDFCFIRSTB" },
+    { name: "Bandhan Bank", symbol: "BANDHANBNK" },
+    { name: "AU Small Finance Bank", symbol: "AUBANK" },
+  ],
+  "NIFTY NEXT 50": [
+    { name: "Adani Green Energy", symbol: "ADANIGREEN" },
+    { name: "Adani Total Gas", symbol: "ATGL" },
+    { name: "Zomato", symbol: "ZOMATO" },
+    { name: "DLF", symbol: "DLF" },
+    { name: "Vedanta", symbol: "VEDL" },
+    { name: "Siemens", symbol: "SIEMENS" },
+    { name: "Godrej Consumer", symbol: "GODREJCP" },
+    { name: "Pidilite Industries", symbol: "PIDILITIND" },
+    { name: "Havells India", symbol: "HAVELLS" },
+    { name: "SBI Cards", symbol: "SBICARD" },
+    { name: "Muthoot Finance", symbol: "MUTHOOTFIN" },
+    { name: "Cholamandalam Finance", symbol: "CHOLAFIN" },
+    { name: "Tata Power", symbol: "TATAPOWER" },
+    { name: "Dabur India", symbol: "DABUR" },
+    { name: "Colgate-Palmolive India", symbol: "COLPAL" },
+    { name: "Marico", symbol: "MARICO" },
+    { name: "Naukri (Info Edge)", symbol: "NAUKRI" },
+    { name: "Berger Paints", symbol: "BERGEPAINT" },
+    { name: "Godrej Properties", symbol: "GODREJPROP" },
+    { name: "Oberoi Realty", symbol: "OBEROIRLTY" },
+  ],
+  "NIFTY AUTO": [
+    { name: "Maruti Suzuki India", symbol: "MARUTI" },
+    { name: "Tata Motors", symbol: "TATAMOTORS" },
+    { name: "Mahindra & Mahindra", symbol: "MM" },
+    { name: "Bajaj Auto", symbol: "BAJAJ-AUTO" },
+    { name: "Hero MotoCorp", symbol: "HEROMOTOCO" },
+    { name: "Eicher Motors", symbol: "EICHERMOT" },
+    { name: "TVS Motor", symbol: "TVSMOTOR" },
+    { name: "Ashok Leyland", symbol: "ASHOKLEY" },
+    { name: "Bosch", symbol: "BOSCHLTD" },
+    { name: "Motherson Sumi", symbol: "MOTHERSUMI" },
+    { name: "Bharat Forge", symbol: "BHARATFORG" },
+    { name: "MRF", symbol: "MRF" },
+    { name: "Apollo Tyres", symbol: "APOLLOTYRE" },
+    { name: "Exide Industries", symbol: "EXIDEIND" },
+    { name: "Balkrishna Industries", symbol: "BALKRISIND" },
+  ],
+  "NIFTY FMCG": [
+    { name: "Hindustan Unilever", symbol: "HINDUNILVR" },
+    { name: "ITC", symbol: "ITC" },
+    { name: "Nestle India", symbol: "NESTLEIND" },
+    { name: "Britannia Industries", symbol: "BRITANNIA" },
+    { name: "Tata Consumer Products", symbol: "TATACONSUM" },
+    { name: "Godrej Consumer", symbol: "GODREJCP" },
+    { name: "Dabur India", symbol: "DABUR" },
+    { name: "Colgate-Palmolive India", symbol: "COLPAL" },
+    { name: "Marico", symbol: "MARICO" },
+    { name: "Emami", symbol: "EMAMILTD" },
+    { name: "Varun Beverages", symbol: "VBL" },
+    { name: "United Breweries", symbol: "UBL" },
+  ],
+  "NIFTY IT": [
+    { name: "Tata Consultancy Services", symbol: "TCS" },
+    { name: "Infosys", symbol: "INFY" },
+    { name: "HCL Technologies", symbol: "HCLTECH" },
+    { name: "Wipro", symbol: "WIPRO" },
+    { name: "Tech Mahindra", symbol: "TECHM" },
+    { name: "LTIMindtree", symbol: "LTIM" },
+    { name: "Mphasis", symbol: "MPHASIS" },
+    { name: "Coforge", symbol: "COFORGE" },
+    { name: "Persistent Systems", symbol: "PERSISTENT" },
+    { name: "Oracle Financial Services", symbol: "OFSS" },
+  ],
+  "NIFTY MEDIA": [
+    { name: "Zee Entertainment", symbol: "ZEEL" },
+    { name: "Sun TV Network", symbol: "SUNTV" },
+    { name: "PVR Inox", symbol: "PVRINOX" },
+    { name: "Dish TV India", symbol: "DISHTV" },
+    { name: "Hathway Cable", symbol: "HATHWAY" },
+    { name: "Den Networks", symbol: "DEN" },
+    { name: "Network18 Media", symbol: "NETWORK18" },
+    { name: "TV18 Broadcast", symbol: "TV18BRDCST" },
+  ],
+  "NIFTY METAL": [
+    { name: "Tata Steel", symbol: "TATASTEEL" },
+    { name: "JSW Steel", symbol: "JSWSTEEL" },
+    { name: "Hindalco Industries", symbol: "HINDALCO" },
+    { name: "Vedanta", symbol: "VEDL" },
+    { name: "Coal India", symbol: "COALINDIA" },
+    { name: "NMDC", symbol: "NMDC" },
+    { name: "SAIL", symbol: "SAIL" },
+    { name: "Hindustan Zinc", symbol: "HINDZINC" },
+    { name: "Jindal Steel & Power", symbol: "JINDALSTEL" },
+    { name: "National Aluminium", symbol: "NATIONALUM" },
+    { name: "Welspun Corp", symbol: "WELCORP" },
+  ],
+  "NIFTY PHARMA": [
+    { name: "Sun Pharmaceutical", symbol: "SUNPHARMA" },
+    { name: "Dr Reddys Laboratories", symbol: "DRREDDY" },
+    { name: "Cipla", symbol: "CIPLA" },
+    { name: "Divis Laboratories", symbol: "DIVISLAB" },
+    { name: "Aurobindo Pharma", symbol: "AUROPHARMA" },
+    { name: "Lupin", symbol: "LUPIN" },
+    { name: "Biocon", symbol: "BIOCON" },
+    { name: "Gland Pharma", symbol: "GLAND" },
+    { name: "Abbott India", symbol: "ABBOTINDIA" },
+    { name: "Alkem Laboratories", symbol: "ALKEM" },
+    { name: "Torrent Pharmaceuticals", symbol: "TORNTPHARM" },
+    { name: "Ipca Laboratories", symbol: "IPCALAB" },
+  ],
+  "NIFTY PSU BANK": [
+    { name: "State Bank of India", symbol: "SBIN" },
+    { name: "Punjab National Bank", symbol: "PNB" },
+    { name: "Bank of Baroda", symbol: "BANKBARODA" },
+    { name: "Canara Bank", symbol: "CANBK" },
+    { name: "Union Bank of India", symbol: "UNIONBANK" },
+    { name: "Indian Bank", symbol: "INDIANB" },
+    { name: "Bank of India", symbol: "BANKINDIA" },
+    { name: "Central Bank of India", symbol: "CENTRALBK" },
+    { name: "UCO Bank", symbol: "UCOBANK" },
+    { name: "Punjab & Sind Bank", symbol: "PSB" },
+    { name: "Indian Overseas Bank", symbol: "IOB" },
+    { name: "Bank of Maharashtra", symbol: "MAHABANK" },
+  ],
+  "NIFTY PRIVATE BANK": [
+    { name: "HDFC Bank", symbol: "HDFCBANK" },
+    { name: "ICICI Bank", symbol: "ICICIBANK" },
+    { name: "Kotak Mahindra Bank", symbol: "KOTAKBANK" },
+    { name: "Axis Bank", symbol: "AXISBANK" },
+    { name: "IndusInd Bank", symbol: "INDUSINDBK" },
+    { name: "Federal Bank", symbol: "FEDERALBNK" },
+    { name: "IDFC First Bank", symbol: "IDFCFIRSTB" },
+    { name: "Bandhan Bank", symbol: "BANDHANBNK" },
+    { name: "AU Small Finance Bank", symbol: "AUBANK" },
+    { name: "RBL Bank", symbol: "RBLBANK" },
+  ],
+  "NIFTY REALTY": [
+    { name: "DLF", symbol: "DLF" },
+    { name: "Godrej Properties", symbol: "GODREJPROP" },
+    { name: "Oberoi Realty", symbol: "OBEROIRLTY" },
+    { name: "Prestige Estates", symbol: "PRESTIGE" },
+    { name: "Brigade Enterprises", symbol: "BRIGADE" },
+    { name: "Sobha", symbol: "SOBHA" },
+    { name: "Macrotech Developers (Lodha)", symbol: "LODHA" },
+    { name: "Sunteck Realty", symbol: "SUNTECK" },
+    { name: "Phoenix Mills", symbol: "PHOENIXLTD" },
+    { name: "Indiabulls Real Estate", symbol: "IBREALEST" },
+  ],
+  "NIFTY HEALTHCARE": [
+    { name: "Sun Pharmaceutical", symbol: "SUNPHARMA" },
+    { name: "Apollo Hospitals", symbol: "APOLLOHOSP" },
+    { name: "Dr Reddys Laboratories", symbol: "DRREDDY" },
+    { name: "Cipla", symbol: "CIPLA" },
+    { name: "Divis Laboratories", symbol: "DIVISLAB" },
+    { name: "Max Healthcare", symbol: "MAXHEALTH" },
+    { name: "Fortis Healthcare", symbol: "FORTIS" },
+    { name: "Narayana Hrudayalaya", symbol: "NH" },
+    { name: "Metropolis Healthcare", symbol: "METROPOLIS" },
+    { name: "Dr Lal PathLabs", symbol: "LALPATHLAB" },
+  ],
+  "NIFTY CONSUMER DURABLES": [
+    { name: "Titan Company", symbol: "TITAN" },
+    { name: "Asian Paints", symbol: "ASIANPAINT" },
+    { name: "Havells India", symbol: "HAVELLS" },
+    { name: "Voltas", symbol: "VOLTAS" },
+    { name: "Berger Paints", symbol: "BERGEPAINT" },
+    { name: "Whirlpool of India", symbol: "WHIRLPOOL" },
+    { name: "Crompton Greaves Consumer", symbol: "CROMPTON" },
+    { name: "Orient Electric", symbol: "ORIENTELEC" },
+    { name: "Blue Star", symbol: "BLUESTARCO" },
+    { name: "Bajaj Electricals", symbol: "BAJAJELEC" },
+    { name: "Kalyan Jewellers", symbol: "KALYANKJIL" },
+    { name: "PC Jeweller", symbol: "PCJEWELLER" },
+  ],
+  "NIFTY OIL & GAS": [
+    { name: "Reliance Industries", symbol: "RELIANCE" },
+    { name: "ONGC", symbol: "ONGC" },
+    { name: "BPCL", symbol: "BPCL" },
+    { name: "GAIL India", symbol: "GAIL" },
+    { name: "Indian Oil Corp", symbol: "IOC" },
+    { name: "Hindustan Petroleum", symbol: "HINDPETRO" },
+    { name: "Oil India", symbol: "OIL" },
+    { name: "Petronet LNG", symbol: "PETRONET" },
+    { name: "Adani Total Gas", symbol: "ATGL" },
+    { name: "Gujarat Gas", symbol: "GUJGASLTD" },
+  ],
+  "NIFTY COMMODITIES": [
+    { name: "Reliance Industries", symbol: "RELIANCE" },
+    { name: "Tata Steel", symbol: "TATASTEEL" },
+    { name: "JSW Steel", symbol: "JSWSTEEL" },
+    { name: "Hindalco Industries", symbol: "HINDALCO" },
+    { name: "Coal India", symbol: "COALINDIA" },
+    { name: "ONGC", symbol: "ONGC" },
+    { name: "UltraTech Cement", symbol: "ULTRACEMCO" },
+    { name: "Grasim Industries", symbol: "GRASIM" },
+    { name: "NMDC", symbol: "NMDC" },
+    { name: "Vedanta", symbol: "VEDL" },
+  ],
+  "NIFTY INDIA CONSUMPTION": [
+    { name: "Hindustan Unilever", symbol: "HINDUNILVR" },
+    { name: "ITC", symbol: "ITC" },
+    { name: "Titan Company", symbol: "TITAN" },
+    { name: "Maruti Suzuki India", symbol: "MARUTI" },
+    { name: "Nestle India", symbol: "NESTLEIND" },
+    { name: "Asian Paints", symbol: "ASIANPAINT" },
+    { name: "Britannia Industries", symbol: "BRITANNIA" },
+    { name: "Dabur India", symbol: "DABUR" },
+    { name: "Godrej Consumer", symbol: "GODREJCP" },
+    { name: "Colgate-Palmolive India", symbol: "COLPAL" },
+    { name: "Marico", symbol: "MARICO" },
+    { name: "Varun Beverages", symbol: "VBL" },
+  ],
+  "NIFTY ENERGY": [
+    { name: "Reliance Industries", symbol: "RELIANCE" },
+    { name: "NTPC", symbol: "NTPC" },
+    { name: "Power Grid Corp", symbol: "POWERGRID" },
+    { name: "ONGC", symbol: "ONGC" },
+    { name: "BPCL", symbol: "BPCL" },
+    { name: "GAIL India", symbol: "GAIL" },
+    { name: "Tata Power", symbol: "TATAPOWER" },
+    { name: "Adani Green Energy", symbol: "ADANIGREEN" },
+    { name: "Torrent Power", symbol: "TORNTPOWER" },
+    { name: "NHPC", symbol: "NHPC" },
+  ],
+  "NIFTY INFRASTRUCTURE": [
+    { name: "Larsen & Toubro", symbol: "LT" },
+    { name: "Adani Ports & SEZ", symbol: "ADANIPORTS" },
+    { name: "Power Grid Corp", symbol: "POWERGRID" },
+    { name: "NTPC", symbol: "NTPC" },
+    { name: "UltraTech Cement", symbol: "ULTRACEMCO" },
+    { name: "Adani Enterprises", symbol: "ADANIENT" },
+    { name: "Container Corp of India", symbol: "CONCOR" },
+    { name: "RVNL", symbol: "RVNL" },
+    { name: "IRB Infrastructure", symbol: "IRB" },
+    { name: "KNR Constructions", symbol: "KNRCON" },
+    { name: "NCC", symbol: "NCC" },
+  ],
+  "NIFTY INDIA DEFENCE": [
+    { name: "HAL (Hindustan Aeronautics)", symbol: "HAL" },
+    { name: "BEL (Bharat Electronics)", symbol: "BEL" },
+    { name: "BHEL", symbol: "BHEL" },
+    { name: "Mazagon Dock", symbol: "MAZDOCK" },
+    { name: "Cochin Shipyard", symbol: "COCHINSHIP" },
+    { name: "Garden Reach Shipbuilders", symbol: "GRSE" },
+    { name: "Data Patterns India", symbol: "DATAPATTE" },
+    { name: "Paras Defence", symbol: "PARAS" },
+    { name: "Solar Industries", symbol: "SOLARINDS" },
+    { name: "Astra Microwave", symbol: "ASTRAMICRO" },
+  ],
+  "NIFTY INDIA TOURISM": [
+    { name: "Indian Hotels (Taj)", symbol: "INDHOTEL" },
+    { name: "EIH (Oberoi)", symbol: "EIHOTEL" },
+    { name: "Thomas Cook India", symbol: "THOMASCOOK" },
+    { name: "IRCTC", symbol: "IRCTC" },
+    { name: "InterGlobe Aviation (IndiGo)", symbol: "INDIGO" },
+    { name: "SpiceJet", symbol: "SPICEJET" },
+    { name: "PVR Inox", symbol: "PVRINOX" },
+    { name: "Lemon Tree Hotels", symbol: "LEMONTREE" },
+  ],
+  "NIFTY CAPITAL MARKETS": [
+    { name: "BSE", symbol: "BSE" },
+    { name: "MCX", symbol: "MCX" },
+    { name: "CDSL", symbol: "CDSL" },
+    { name: "Angel One", symbol: "ANGELONE" },
+    { name: "5paisa Capital", symbol: "5PAISA" },
+    { name: "ICICI Securities", symbol: "ISEC" },
+    { name: "Motilal Oswal Financial", symbol: "MOTILALOFS" },
+    { name: "Nippon Life India AMC", symbol: "NAM-INDIA" },
+    { name: "HDFC AMC", symbol: "HDFCAMC" },
+    { name: "UTI AMC", symbol: "UTIAMC" },
+  ],
+  "NIFTY EV & NEW AGE AUTOMOTIVE": [
+    { name: "Tata Motors", symbol: "TATAMOTORS" },
+    { name: "Mahindra & Mahindra", symbol: "MM" },
+    { name: "Ola Electric", symbol: "OLAELEC" },
+    { name: "Hero MotoCorp", symbol: "HEROMOTOCO" },
+    { name: "TVS Motor", symbol: "TVSMOTOR" },
+    { name: "Exide Industries", symbol: "EXIDEIND" },
+    { name: "Amara Raja Energy", symbol: "AMARAJABAT" },
+    { name: "Tata Power", symbol: "TATAPOWER" },
+  ],
+  "NIFTY MOBILITY": [
+    { name: "Maruti Suzuki India", symbol: "MARUTI" },
+    { name: "Tata Motors", symbol: "TATAMOTORS" },
+    { name: "Mahindra & Mahindra", symbol: "MM" },
+    { name: "Bajaj Auto", symbol: "BAJAJ-AUTO" },
+    { name: "Hero MotoCorp", symbol: "HEROMOTOCO" },
+    { name: "InterGlobe Aviation (IndiGo)", symbol: "INDIGO" },
+    { name: "Container Corp of India", symbol: "CONCOR" },
+    { name: "Blue Dart Express", symbol: "BLUEDART" },
+    { name: "Adani Ports & SEZ", symbol: "ADANIPORTS" },
+    { name: "IRCTC", symbol: "IRCTC" },
+    { name: "Ashok Leyland", symbol: "ASHOKLEY" },
+    { name: "Eicher Motors", symbol: "EICHERMOT" },
+  ],
+  "NIFTY RURAL": [
+    { name: "ITC", symbol: "ITC" },
+    { name: "Hindustan Unilever", symbol: "HINDUNILVR" },
+    { name: "Dabur India", symbol: "DABUR" },
+    { name: "Marico", symbol: "MARICO" },
+    { name: "Godrej Consumer", symbol: "GODREJCP" },
+    { name: "Emami", symbol: "EMAMILTD" },
+    { name: "Jyothy Labs", symbol: "JYOTHYLAB" },
+    { name: "Hero MotoCorp", symbol: "HEROMOTOCO" },
+    { name: "TVS Motor", symbol: "TVSMOTOR" },
+    { name: "Mahindra & Mahindra", symbol: "MM" },
+    { name: "Bajaj Auto", symbol: "BAJAJ-AUTO" },
+    { name: "Tata Motors", symbol: "TATAMOTORS" },
+  ],
+};
 
 // ─── SECTOR FII DATA ───────────────────────────────────────────────────────────
 const SECTORS = [
@@ -1250,6 +1973,9 @@ function fmtK(v: number) {
   return String(v);
 }
 
+const selectCls =
+  "bg-slate-800 border border-slate-600 text-slate-300 text-xs rounded-lg px-2 py-1.5 hover:border-blue-500 focus:border-blue-500 focus:outline-none cursor-pointer";
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // SHARED COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1352,76 +2078,99 @@ interface CandlePoint {
 }
 
 // Custom recharts Customized component to render candles
-function CandlesRenderer(props: Record<string, unknown>) {
-  const { xAxisMap, yAxisMap, data } = props as {
-    xAxisMap: Record<
-      string,
-      { scale: (v: unknown) => number; bandwidth?: () => number }
-    >;
-    yAxisMap: Record<string, { scale: (v: number) => number }>;
-    data: CandlePoint[];
+// yAxisKey: which yAxisMap key to use for price ("0" for single-axis, "price" for dual-axis)
+function makeCandlesRenderer(yAxisKey: string | number = 0) {
+  return function CandlesRenderer(props: Record<string, unknown>) {
+    const { xAxisMap, yAxisMap, data } = props as {
+      xAxisMap: Record<
+        string,
+        { scale: (v: unknown) => number; bandwidth?: () => number }
+      >;
+      yAxisMap: Record<string | number, { scale: (v: number) => number }>;
+      data: CandlePoint[];
+    };
+    if (!xAxisMap || !yAxisMap || !data) return null;
+    const xAxis = xAxisMap[0];
+    const yAxis = yAxisMap[yAxisKey];
+    if (!xAxis || !yAxis) return null;
+    const bw = xAxis.bandwidth ? xAxis.bandwidth() : 8;
+    const bodyW = Math.max(2, bw * 0.6);
+    return (
+      <g>
+        {data.map((d, i) => {
+          const x = xAxis.scale(d.date);
+          if (x === undefined) return null;
+          const yHigh = yAxis.scale(d.high);
+          const yLow = yAxis.scale(d.low);
+          const yOpen = yAxis.scale(d.open);
+          const yClose = yAxis.scale(d.close);
+          const color = d.close >= d.open ? "#22c55e" : "#ef4444";
+          const bodyTop = Math.min(yOpen, yClose);
+          const bodyH = Math.max(1, Math.abs(yClose - yOpen));
+          const cx = x + bw / 2;
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: index is stable for candle positions
+            <g key={i}>
+              <line
+                x1={cx}
+                y1={yHigh}
+                x2={cx}
+                y2={yLow}
+                stroke={color}
+                strokeWidth={1}
+              />
+              <rect
+                x={cx - bodyW / 2}
+                y={bodyTop}
+                width={bodyW}
+                height={bodyH}
+                fill={color}
+              />
+            </g>
+          );
+        })}
+      </g>
+    );
   };
-  if (!xAxisMap || !yAxisMap || !data) return null;
-  const xAxis = xAxisMap[0];
-  const yAxis = yAxisMap[0];
-  if (!xAxis || !yAxis) return null;
-  const bw = xAxis.bandwidth ? xAxis.bandwidth() : 8;
-  const bodyW = Math.max(2, bw * 0.6);
-  return (
-    <g>
-      {data.map((d, i) => {
-        const x = xAxis.scale(i);
-        if (x === undefined) return null;
-        const yHigh = yAxis.scale(d.high);
-        const yLow = yAxis.scale(d.low);
-        const yOpen = yAxis.scale(d.open);
-        const yClose = yAxis.scale(d.close);
-        const color = d.close >= d.open ? "#22c55e" : "#ef4444";
-        const bodyTop = Math.min(yOpen, yClose);
-        const bodyH = Math.max(1, Math.abs(yClose - yOpen));
-        const cx = x + bw / 2;
-        return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: index is stable for candle positions
-          <g key={i}>
-            <line
-              x1={cx}
-              y1={yHigh}
-              x2={cx}
-              y2={yLow}
-              stroke={color}
-              strokeWidth={1}
-            />
-            <rect
-              x={cx - bodyW / 2}
-              y={bodyTop}
-              width={bodyW}
-              height={bodyH}
-              fill={color}
-            />
-          </g>
-        );
-      })}
-    </g>
-  );
 }
 
-function CandlestickChart({
+// Pre-built renderer for dual-axis (price on right "price" axis)
+const CandlesRendererPrice = makeCandlesRenderer("price");
+
+// ─── COMBINED CANDLESTICK + VOLUME CHART ──────────────────────────────────────
+interface CandleWithVolume extends CandlePoint {
+  volume: number;
+  avg?: number;
+}
+
+function CandlestickWithVolumeChart({
   data,
-  height = 260,
-}: { data: CandlePoint[]; height?: number }) {
+  height = 320,
+  avgDays,
+  showAvg = true,
+}: {
+  data: CandleWithVolume[];
+  height?: number;
+  avgDays?: number;
+  showAvg?: boolean;
+}) {
   const dummyData = data.map((d, i) => ({
     ...d,
     _idx: i,
     _dummy: (d.high + d.low) / 2,
   }));
-  const minVal = Math.min(...data.map((d) => d.low));
-  const maxVal = Math.max(...data.map((d) => d.high));
-  const padding = (maxVal - minVal) * 0.05;
+
+  const minPrice = Math.min(...data.map((d) => d.low));
+  const maxPrice = Math.max(...data.map((d) => d.high));
+  const pricePad = (maxPrice - minPrice) * 0.05;
+
+  const maxVol = Math.max(...data.map((d) => d.volume));
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart
         data={dummyData}
-        margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+        margin={{ top: 4, right: 65, bottom: 0, left: 4 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
         <XAxis
@@ -1429,19 +2178,45 @@ function CandlestickChart({
           tick={{ fontSize: 9, fill: "#64748b" }}
           interval={Math.floor(data.length / 6)}
         />
+        {/* Left Y-axis: Volume */}
         <YAxis
+          yAxisId="vol"
+          orientation="left"
           tick={{ fontSize: 9, fill: "#64748b" }}
-          domain={[minVal - padding, maxVal + padding]}
+          tickFormatter={(v: number) => `${(v / 1e5).toFixed(0)}L`}
+          domain={[0, maxVol * 3]}
+          width={44}
+          label={{
+            value: "Volume",
+            angle: -90,
+            position: "insideLeft",
+            offset: 8,
+            style: { fontSize: 9, fill: "#64748b" },
+          }}
+        />
+        {/* Right Y-axis: Price */}
+        <YAxis
+          yAxisId="price"
+          orientation="right"
+          tick={{ fontSize: 9, fill: "#64748b" }}
+          domain={[minPrice - pricePad, maxPrice + pricePad]}
           width={65}
           tickFormatter={(v: number) =>
             v.toLocaleString("en-IN", { maximumFractionDigits: 0 })
           }
+          label={{
+            value: "Price",
+            angle: 90,
+            position: "insideRight",
+            offset: 8,
+            style: { fontSize: 9, fill: "#64748b" },
+          }}
         />
         <Tooltip
           {...ttStyle}
           content={({ payload }) => {
             if (!payload?.length) return null;
-            const d = payload[0]?.payload as CandlePoint;
+            const d = payload[0]?.payload as CandleWithVolume;
             return (
               <div
                 style={ttStyle.contentStyle}
@@ -1476,12 +2251,56 @@ function CandlestickChart({
                     {d.close?.toLocaleString("en-IN")}
                   </span>
                 </div>
+                <div>
+                  Vol:{" "}
+                  <span className="text-blue-400">
+                    {(d.volume / 1e5).toFixed(2)}L
+                  </span>
+                </div>
+                {showAvg && d.avg !== undefined && (
+                  <div>
+                    Avg({avgDays}D):{" "}
+                    <span className="text-orange-400">
+                      {(d.avg / 1e5).toFixed(2)}L
+                    </span>
+                  </div>
+                )}
               </div>
             );
           }}
         />
-        <Bar dataKey="_dummy" opacity={0} isAnimationActive={false} />
-        <Customized component={CandlesRenderer} />
+        {/* Volume bars on left axis */}
+        <Bar
+          yAxisId="vol"
+          dataKey="volume"
+          name="Volume"
+          fill="#1d4ed8"
+          opacity={0.5}
+          radius={[1, 1, 0, 0]}
+          isAnimationActive={false}
+        />
+        {/* Volume moving average line on left axis */}
+        {showAvg && (
+          <Line
+            yAxisId="vol"
+            type="monotone"
+            dataKey="avg"
+            name={`${avgDays}D Avg`}
+            stroke="#f97316"
+            dot={false}
+            strokeWidth={1.5}
+            isAnimationActive={false}
+          />
+        )}
+        {/* Invisible bar on price axis to establish the domain */}
+        <Bar
+          yAxisId="price"
+          dataKey="_dummy"
+          opacity={0}
+          isAnimationActive={false}
+        />
+        {/* Candlestick renderer using the right (price) axis */}
+        <Customized component={CandlesRendererPrice} />
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -1489,7 +2308,7 @@ function CandlestickChart({
 
 // ─── PCR + OI CHART ────────────────────────────────────────────────────────────
 function PCROIPanel({ data, title }: { data: PCRBarData[]; title: string }) {
-  const chartW = Math.max(500, data.length * 18);
+  const chartW = Math.max(600, data.length * 18);
   const scrollRef = useRef<HTMLDivElement>(null);
   const touchStartX = useRef<number>(0);
   const touchScrollLeft = useRef<number>(0);
@@ -1511,95 +2330,115 @@ function PCROIPanel({ data, title }: { data: PCRBarData[]; title: string }) {
       {title && (
         <div className="text-xs font-semibold text-slate-300 mb-1">{title}</div>
       )}
+      {/* Legend row */}
+      <div className="flex flex-wrap gap-3 text-xs text-slate-400 mb-1 px-1">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-4 h-0.5 bg-blue-400 rounded" />
+          PCR Ratio (Left)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-sm bg-green-500 opacity-80" />
+          PE OI (Right)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-sm bg-red-500 opacity-80" />
+          CE OI (Right)
+        </span>
+      </div>
       <div
         className="overflow-x-auto rounded-lg"
         ref={scrollRef}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
       >
-        {/* Side-by-side: PCR Ratio (left) | Total OI Volume (right) */}
-        <div style={{ minWidth: chartW * 2, display: "flex", gap: 8 }}>
-          {/* Left: PCR Ratio Line */}
-          <div style={{ flex: 1, minWidth: chartW }}>
-            <div className="text-xs text-slate-500 mb-0.5 px-1">PCR Ratio</div>
-            <LineChart
-              width={chartW}
-              height={200}
-              data={data}
-              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 8, fill: "#64748b" }}
-                interval={Math.floor(data.length / 8)}
-              />
-              <YAxis
-                tick={{ fontSize: 8, fill: "#64748b" }}
-                domain={[0.4, 2.0]}
-                width={30}
-              />
-              <Tooltip
-                {...ttStyle}
-                formatter={(v: number) => [v.toFixed(3), "PCR"]}
-              />
-              <ReferenceLine y={1} stroke="#475569" strokeDasharray="4 4" />
-              <Line
-                type="monotone"
-                dataKey="pcrRatio"
-                stroke="#3b82f6"
-                dot={false}
-                strokeWidth={2}
-                name="PCR"
-              />
-            </LineChart>
-          </div>
-          {/* Right: PE / CE OI Histograms */}
-          <div style={{ flex: 1, minWidth: chartW }}>
-            <div className="text-xs text-slate-500 mb-0.5 px-1">
-              Total OI Volume (PE = Green, CE = Red)
-            </div>
-            <BarChart
-              width={chartW}
-              height={200}
-              data={data}
-              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-              barCategoryGap={2}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="#1e293b"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 8, fill: "#64748b" }}
-                interval={Math.floor(data.length / 8)}
-              />
-              <YAxis
-                tick={{ fontSize: 8, fill: "#64748b" }}
-                tickFormatter={fmtK}
-                width={36}
-              />
-              <Tooltip
-                {...ttStyle}
-                formatter={(v: number, n: string) => [fmtK(v), n]}
-              />
-              <Legend wrapperStyle={{ fontSize: 10 }} />
-              <Bar
-                dataKey="peOI"
-                name="PE OI"
-                fill="#22c55e"
-                radius={[2, 2, 0, 0]}
-              />
-              <Bar
-                dataKey="ceOI"
-                name="CE OI"
-                fill="#ef4444"
-                radius={[2, 2, 0, 0]}
-              />
-            </BarChart>
-          </div>
+        {/* Combined chart: PCR Ratio line (left Y) + PE/CE OI bars (right Y) */}
+        <div style={{ minWidth: chartW }}>
+          <ComposedChart
+            width={chartW}
+            height={220}
+            data={data}
+            margin={{ top: 4, right: 48, bottom: 0, left: 0 }}
+            barCategoryGap={2}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 8, fill: "#64748b" }}
+              interval={Math.floor(data.length / 8)}
+            />
+            {/* Left Y-axis: PCR Ratio */}
+            <YAxis
+              yAxisId="pcr"
+              orientation="left"
+              tick={{ fontSize: 8, fill: "#60a5fa" }}
+              domain={[0.4, 2.0]}
+              width={34}
+              tickFormatter={(v: number) => v.toFixed(2)}
+              label={{
+                value: "PCR",
+                angle: -90,
+                position: "insideLeft",
+                offset: 6,
+                style: { fontSize: 9, fill: "#60a5fa" },
+              }}
+            />
+            {/* Right Y-axis: Total OI Volume */}
+            <YAxis
+              yAxisId="oi"
+              orientation="right"
+              tick={{ fontSize: 8, fill: "#94a3b8" }}
+              tickFormatter={fmtK}
+              width={44}
+              label={{
+                value: "OI Vol",
+                angle: 90,
+                position: "insideRight",
+                offset: 6,
+                style: { fontSize: 9, fill: "#94a3b8" },
+              }}
+            />
+            <Tooltip
+              {...ttStyle}
+              formatter={(v: number, name: string) => {
+                if (name === "PCR") return [v.toFixed(3), "PCR Ratio"];
+                return [fmtK(v), name];
+              }}
+            />
+            <ReferenceLine
+              yAxisId="pcr"
+              y={1}
+              stroke="#475569"
+              strokeDasharray="4 4"
+            />
+            {/* PE OI bars (green) */}
+            <Bar
+              yAxisId="oi"
+              dataKey="peOI"
+              name="PE OI"
+              fill="#22c55e"
+              opacity={0.75}
+              radius={[2, 2, 0, 0]}
+            />
+            {/* CE OI bars (red) */}
+            <Bar
+              yAxisId="oi"
+              dataKey="ceOI"
+              name="CE OI"
+              fill="#ef4444"
+              opacity={0.75}
+              radius={[2, 2, 0, 0]}
+            />
+            {/* PCR Ratio line on top */}
+            <Line
+              yAxisId="pcr"
+              type="monotone"
+              dataKey="pcrRatio"
+              stroke="#3b82f6"
+              dot={false}
+              strokeWidth={2}
+              name="PCR"
+            />
+          </ComposedChart>
         </div>
       </div>
     </div>
@@ -1638,38 +2477,13 @@ function ExpirySelector({
   );
 }
 
-function mergePCROI(
-  source: Record<string, PCRBarData[]>,
-  selected: Record<string, boolean>,
-): PCRBarData[] {
-  const active = Object.keys(selected).filter((e) => selected[e]);
-  if (!active.length) return [];
-  const base = source[active[0]];
-  return base.map((item, i) => {
-    let totalPE = 0;
-    let totalCE = 0;
-    for (const e of active) {
-      const arr = source[e];
-      totalPE += arr[i]?.peOI ?? 0;
-      totalCE += arr[i]?.ceOI ?? 0;
-    }
-    const pcrRatio = totalCE > 0 ? totalPE / totalCE : 0;
-    return {
-      date: item.date,
-      pcrRatio: +pcrRatio.toFixed(3),
-      peOI: totalPE,
-      ceOI: totalCE,
-    };
-  });
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // TAB 1: ANALYSIS
 // ═══════════════════════════════════════════════════════════════════════════════
 function TabAnalysis() {
   const niftyLast = NIFTY_DATA[NIFTY_DATA.length - 1];
   const bnkLast = BANKNIFTY_DATA[BANKNIFTY_DATA.length - 1];
-  const usdInrLast = MACRO_USDINT[MACRO_USDINT.length - 1];
+  const usdInrLast = MACRO_USDINT_FULL[MACRO_USDINT_FULL.length - 1];
 
   return (
     <div className="space-y-5">
@@ -1845,6 +2659,7 @@ function IndexPricePanel({
 }: { indexName: string; rawData: OHLC[]; ocidPrefix: string }) {
   const [tf, setTf] = useState("1D");
   const [visibleCount, setVisibleCount] = useState(60);
+  const [avgDays] = useState(20);
   const TF_MULTIPLIERS: Record<string, number> = {
     "5m": 78,
     "15m": 26,
@@ -1875,13 +2690,29 @@ function IndexPricePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawData, tf, visibleCount]);
 
-  const candleData: CandlePoint[] = candles.map((d) => ({
-    date: formatDate(d.date),
-    open: d.open,
-    high: d.high,
-    low: d.low,
-    close: d.close,
-  }));
+  // Combined candle + volume data (simulate volume for index)
+  const combinedData: CandleWithVolume[] = useMemo(() => {
+    return candles.map((d, i) => {
+      const vol = rndi(50_000_000, 200_000_000);
+      const slicedVols = candles
+        .slice(0, i + 1)
+        .map(() => rndi(50_000_000, 200_000_000));
+      const from = Math.max(0, i - avgDays + 1);
+      const avgVol = Math.round(
+        slicedVols.slice(from).reduce((s, v) => s + v, 0) / (i - from + 1),
+      );
+      return {
+        date: formatDate(d.date),
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close,
+        volume: vol,
+        avg: avgVol,
+      };
+    });
+  }, [candles, avgDays]);
+
   const last = rawData[rawData.length - 1];
   const prev = rawData[rawData.length - 2];
   const chg = last.close - prev.close;
@@ -1918,6 +2749,20 @@ function IndexPricePanel({
           colorClass={isUp ? "text-green-400" : "text-red-400"}
         />
       </div>
+      <div className="flex flex-wrap gap-3 text-xs text-slate-400 mb-2 px-1">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-sm bg-blue-700 opacity-60" />
+          Volume (Left)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-4 h-0.5 bg-orange-400 rounded" />
+          {avgDays}D Avg Vol (Left)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded-sm bg-green-500" />
+          Price (Right)
+        </span>
+      </div>
       <div
         onWheel={(e) => {
           e.preventDefault();
@@ -1929,7 +2774,12 @@ function IndexPricePanel({
         }}
         style={{ touchAction: "none" }}
       >
-        <CandlestickChart data={candleData} height={260} />
+        <CandlestickWithVolumeChart
+          data={combinedData}
+          height={300}
+          avgDays={avgDays}
+          showAvg={true}
+        />
       </div>
     </Card>
   );
@@ -1937,12 +2787,12 @@ function IndexPricePanel({
 
 function IndexOIPanel({
   indexName,
-  pcrSource,
+  pcrSourceFull,
   expiries,
   ocidPrefix,
 }: {
   indexName: string;
-  pcrSource: Record<string, PCRBarData[]>;
+  pcrSourceFull: Record<string, ExtendedPCRBarData[]>;
   expiries: string[];
   ocidPrefix: string;
 }) {
@@ -1953,10 +2803,19 @@ function IndexOIPanel({
     (e: string) => setSelected((s) => ({ ...s, [e]: !s[e] })),
     [],
   );
+
+  const today = new Date();
+  const [oiYear, setOiYear] = useState(today.getFullYear());
+  const [oiMonth, setOiMonth] = useState(today.getMonth());
+
   const merged = useMemo(
-    () => mergePCROI(pcrSource, selected),
-    [pcrSource, selected],
+    () => mergePCROIFiltered(pcrSourceFull, selected, oiYear, oiMonth),
+    [pcrSourceFull, selected, oiYear, oiMonth],
   );
+
+  const fourMonthRange = getFourMonthRange(oiYear, oiMonth);
+  const rangeLabel = `${MONTH_NAMES[fourMonthRange[0].month]} ${fourMonthRange[0].year} – ${MONTH_NAMES[fourMonthRange[3].month]} ${fourMonthRange[3].year}`;
+
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -1969,6 +2828,38 @@ function IndexOIPanel({
           onToggle={onToggle}
           ocidPrefix={ocidPrefix}
         />
+      </div>
+      {/* Year / Month selectors */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-xs text-slate-500">Year:</span>
+        <select
+          data-ocid={`${ocidPrefix}.oi.year.select`}
+          className={selectCls}
+          value={oiYear}
+          onChange={(e) => setOiYear(Number(e.target.value))}
+        >
+          {OI_YEAR_OPTIONS.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-slate-500">Month:</span>
+        <select
+          data-ocid={`${ocidPrefix}.oi.month.select`}
+          className={selectCls}
+          value={oiMonth}
+          onChange={(e) => setOiMonth(Number(e.target.value))}
+        >
+          {MONTH_NAMES.map((m, i) => (
+            <option key={m} value={i}>
+              {m}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-slate-500 ml-1">
+          Showing: <span className="text-slate-300">{rangeLabel}</span>
+        </span>
       </div>
       {merged.length === 0 ? (
         <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
@@ -1991,7 +2882,7 @@ function TabIndex() {
       />
       <IndexOIPanel
         indexName="Nifty50"
-        pcrSource={NIFTY_PCR_OI}
+        pcrSourceFull={NIFTY_PCR_OI_FULL}
         expiries={["CW", "NW", "CM", "NM"]}
         ocidPrefix="index.nifty"
       />
@@ -2002,7 +2893,7 @@ function TabIndex() {
       />
       <IndexOIPanel
         indexName="BankNifty"
-        pcrSource={BANKNIFTY_PCR_OI}
+        pcrSourceFull={BANKNIFTY_PCR_OI_FULL}
         expiries={["CM", "NM"]}
         ocidPrefix="index.banknifty"
       />
@@ -2094,16 +2985,9 @@ function StockPricePanel({ sym }: { sym: string }) {
   const [visibleCount, setVisibleCount] = useState(60);
   const [avgDays, setAvgDays] = useState(20);
   const rawData = useMemo(() => getStockData(sym), [sym]);
-  const candleData: CandlePoint[] = useMemo(() => {
-    return rawData.slice(-visibleCount).map((d) => ({
-      date: formatDate(d.date),
-      open: d.open,
-      high: d.high,
-      low: d.low,
-      close: d.close,
-    }));
-  }, [rawData, visibleCount]);
-  const volumeData = useMemo(() => {
+
+  // Combined candle + volume data
+  const combinedData: CandleWithVolume[] = useMemo(() => {
     const sliced = rawData.slice(-visibleCount);
     return sliced.map((d, i) => {
       const from = Math.max(0, i - avgDays + 1);
@@ -2112,11 +2996,16 @@ function StockPricePanel({ sym }: { sym: string }) {
         (i - from + 1);
       return {
         date: formatDate(d.date),
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close,
         volume: d.volume,
         avg: Math.round(avg),
       };
     });
   }, [rawData, visibleCount, avgDays]);
+
   const last = rawData[rawData.length - 1];
   const prev = rawData[rawData.length - 2];
   const chg = last.close - prev.close;
@@ -2169,6 +3058,37 @@ function StockPricePanel({ sym }: { sym: string }) {
           value={`${(last.volume / 1e5).toFixed(2)}L`}
         />
       </div>
+      {/* Chart legend + avg days control */}
+      <div className="flex flex-wrap items-center gap-3 mb-2">
+        <div className="flex flex-wrap gap-3 text-xs text-slate-400">
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 h-3 rounded-sm bg-blue-700 opacity-60" />
+            Volume (Left)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-4 h-0.5 bg-orange-400 rounded" />
+            Avg Vol (Left)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-3 h-3 rounded-sm bg-green-500" />
+            Price (Right)
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 ml-auto">
+          <span className="text-xs text-slate-500">Avg Days:</span>
+          <input
+            type="number"
+            min={1}
+            max={200}
+            value={avgDays}
+            onChange={(e) =>
+              setAvgDays(Math.max(1, Math.min(200, Number(e.target.value))))
+            }
+            data-ocid="stock.avgdays.input"
+            className="w-14 bg-slate-900 border border-slate-600 text-slate-200 text-xs rounded px-2 py-1 outline-none focus:border-blue-500"
+          />
+        </div>
+      </div>
       <div
         onWheel={(e) => {
           e.preventDefault();
@@ -2180,65 +3100,12 @@ function StockPricePanel({ sym }: { sym: string }) {
         }}
         style={{ touchAction: "none" }}
       >
-        <CandlestickChart data={candleData} height={230} />
-      </div>
-      <div className="mt-3">
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-xs text-slate-500">Volume</span>
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-slate-500">Avg Days:</span>
-            <input
-              type="number"
-              min={1}
-              max={200}
-              value={avgDays}
-              onChange={(e) =>
-                setAvgDays(Math.max(1, Math.min(200, Number(e.target.value))))
-              }
-              data-ocid="stock.avgdays.input"
-              className="w-14 bg-slate-900 border border-slate-600 text-slate-200 text-xs rounded px-2 py-1 outline-none focus:border-blue-500"
-            />
-          </div>
-        </div>
-        <ResponsiveContainer width="100%" height={80}>
-          <ComposedChart
-            data={volumeData}
-            margin={{ top: 0, right: 8, bottom: 0, left: 0 }}
-          >
-            <XAxis
-              dataKey="date"
-              tick={{ fontSize: 8, fill: "#64748b" }}
-              interval="preserveStartEnd"
-            />
-            <YAxis
-              tick={{ fontSize: 8, fill: "#64748b" }}
-              tickFormatter={(v: number) => `${(v / 1e5).toFixed(0)}L`}
-              width={34}
-            />
-            <Tooltip
-              {...ttStyle}
-              formatter={(v: number, n: string) => [
-                `${(v / 1e5).toFixed(2)}L`,
-                n,
-              ]}
-            />
-            <Bar
-              dataKey="volume"
-              name="Volume"
-              fill="#1d4ed8"
-              radius={[2, 2, 0, 0]}
-              opacity={0.8}
-            />
-            <Line
-              type="monotone"
-              dataKey="avg"
-              name={`${avgDays}D Avg`}
-              stroke="#f97316"
-              dot={false}
-              strokeWidth={1.5}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+        <CandlestickWithVolumeChart
+          data={combinedData}
+          height={320}
+          avgDays={avgDays}
+          showAvg={true}
+        />
       </div>
     </Card>
   );
@@ -2254,14 +3121,27 @@ function StockOIPanel({ sym }: { sym: string }) {
     (e: string) => setSelected((s) => ({ ...s, [e]: !s[e] })),
     [],
   );
-  const pcrSource = useMemo(
-    () => ({ CM: getStockPCROI(sym, "CM"), NM: getStockPCROI(sym, "NM") }),
+
+  const today = new Date();
+  const [oiYear, setOiYear] = useState(today.getFullYear());
+  const [oiMonth, setOiMonth] = useState(today.getMonth());
+
+  const pcrSourceFull = useMemo(
+    () => ({
+      CM: getStockPCROIFull(sym, "CM"),
+      NM: getStockPCROIFull(sym, "NM"),
+    }),
     [sym],
   );
+
   const merged = useMemo(
-    () => mergePCROI(pcrSource, selected),
-    [pcrSource, selected],
+    () => mergePCROIFiltered(pcrSourceFull, selected, oiYear, oiMonth),
+    [pcrSourceFull, selected, oiYear, oiMonth],
   );
+
+  const fourMonthRange = getFourMonthRange(oiYear, oiMonth);
+  const rangeLabel = `${MONTH_NAMES[fourMonthRange[0].month]} ${fourMonthRange[0].year} – ${MONTH_NAMES[fourMonthRange[3].month]} ${fourMonthRange[3].year}`;
+
   if (!hasOptions) {
     return (
       <Card className="flex flex-col items-center justify-center min-h-48">
@@ -2287,6 +3167,38 @@ function StockOIPanel({ sym }: { sym: string }) {
           onToggle={onToggle}
           ocidPrefix="stock"
         />
+      </div>
+      {/* Year / Month selectors */}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="text-xs text-slate-500">Year:</span>
+        <select
+          data-ocid="stock.oi.year.select"
+          className={selectCls}
+          value={oiYear}
+          onChange={(e) => setOiYear(Number(e.target.value))}
+        >
+          {OI_YEAR_OPTIONS.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-slate-500">Month:</span>
+        <select
+          data-ocid="stock.oi.month.select"
+          className={selectCls}
+          value={oiMonth}
+          onChange={(e) => setOiMonth(Number(e.target.value))}
+        >
+          {MONTH_NAMES.map((m, i) => (
+            <option key={m} value={i}>
+              {m}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-slate-500 ml-1">
+          Showing: <span className="text-slate-300">{rangeLabel}</span>
+        </span>
       </div>
       {merged.length === 0 ? (
         <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
@@ -2317,8 +3229,21 @@ function TabStocks() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // TAB 4: MACRO INDICATORS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+function NoDataMsg() {
+  return (
+    <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
+      No data available for selected period
+    </div>
+  );
+}
+
 function DailyIndicatorsCard() {
   const [sub, setSub] = useState<"usd" | "fiidii" | "crude" | "gsec">("usd");
+  const today = new Date();
+  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(today.getMonth());
+
   const subTabs = [
     { id: "usd" as const, label: "USD/INR", ocid: "macro.daily.usdinr.tab" },
     {
@@ -2333,12 +3258,71 @@ function DailyIndicatorsCard() {
       ocid: "macro.daily.gsec.tab",
     },
   ];
-  const sliceDays = 132;
+
+  const usdData = useMemo(
+    () =>
+      MACRO_USDINT_FULL.filter(
+        (d) => d.year === selectedYear && d.month === selectedMonth,
+      ),
+    [selectedYear, selectedMonth],
+  );
+  const fiiData = useMemo(
+    () =>
+      MACRO_FII_FULL.filter(
+        (d) => d.year === selectedYear && d.month === selectedMonth,
+      ),
+    [selectedYear, selectedMonth],
+  );
+  const crudeData = useMemo(
+    () =>
+      MACRO_CRUDE_FULL.filter(
+        (d) => d.year === selectedYear && d.month === selectedMonth,
+      ),
+    [selectedYear, selectedMonth],
+  );
+  const gsecData = useMemo(
+    () =>
+      MACRO_GSEC_FULL.filter(
+        (d) => d.year === selectedYear && d.month === selectedMonth,
+      ),
+    [selectedYear, selectedMonth],
+  );
+
+  const xAxisInterval = (len: number) => (len <= 10 ? 0 : len <= 20 ? 2 : 5);
+
   return (
     <Card>
-      <h2 className="text-sm font-bold text-slate-100 mb-3">
-        Daily Indicators
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h2 className="text-sm font-bold text-slate-100">Daily Indicators</h2>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">Year:</span>
+          <select
+            data-ocid="macro.daily.year.select"
+            className={selectCls}
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+          >
+            {YEAR_OPTIONS.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-slate-500">Month:</span>
+          <select
+            data-ocid="macro.daily.month.select"
+            className={selectCls}
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+          >
+            {MONTH_NAMES.map((m, i) => (
+              <option key={m} value={i}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="flex flex-wrap gap-1.5 mb-4">
         {subTabs.map((t) => (
           <button
@@ -2355,186 +3339,206 @@ function DailyIndicatorsCard() {
       {sub === "usd" && (
         <>
           <div className="text-xs text-slate-500 mb-2">
-            USD/INR Exchange Rate (₹/USD) — Daily
+            USD/INR Exchange Rate (₹/USD) — Daily — {MONTH_NAMES[selectedMonth]}{" "}
+            {selectedYear}
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart
-              data={MACRO_USDINT.slice(-sliceDays)}
-              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 10, fill: "#64748b" }}
-                interval={20}
-              />
-              <YAxis
-                tick={{ fontSize: 10, fill: "#64748b" }}
-                domain={["auto", "auto"]}
-                width={50}
-              />
-              <Tooltip
-                {...ttStyle}
-                formatter={(v: number) => [`₹${v}`, "USD/INR"]}
-              />
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke="#3b82f6"
-                dot={false}
-                strokeWidth={2}
-                name="USD/INR"
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {usdData.length === 0 ? (
+            <NoDataMsg />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart
+                data={usdData}
+                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10, fill: "#64748b" }}
+                  interval={xAxisInterval(usdData.length)}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: "#64748b" }}
+                  domain={["auto", "auto"]}
+                  width={50}
+                />
+                <Tooltip
+                  {...ttStyle}
+                  formatter={(v: number) => [`₹${v}`, "USD/INR"]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#3b82f6"
+                  dot={false}
+                  strokeWidth={2}
+                  name="USD/INR"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
       {sub === "fiidii" && (
         <>
           <div className="text-xs text-slate-500 mb-2">
-            FII & DII Daily Flows (₹ Cr) — FII (Blue), DII (Green)
+            FII & DII Daily Flows (₹ Cr) — FII (Blue), DII (Green) —{" "}
+            {MONTH_NAMES[selectedMonth]} {selectedYear}
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart
-              data={MACRO_FII.slice(-sliceDays)}
-              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="#1e293b"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                interval={20}
-              />
-              <YAxis
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                width={55}
-                tickFormatter={fmtK}
-              />
-              <Tooltip
-                {...ttStyle}
-                formatter={(v: number, n: string) => [`₹${fmtK(v)} Cr`, n]}
-              />
-              <ReferenceLine y={0} stroke="#475569" />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar
-                dataKey="fii"
-                name="FII"
-                fill="#3b82f6"
-                radius={[2, 2, 0, 0]}
-                opacity={0.8}
-              />
-              <Bar
-                dataKey="dii"
-                name="DII"
-                fill="#22c55e"
-                radius={[2, 2, 0, 0]}
-                opacity={0.8}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+          {fiiData.length === 0 ? (
+            <NoDataMsg />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart
+                data={fiiData}
+                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#1e293b"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  interval={xAxisInterval(fiiData.length)}
+                />
+                <YAxis
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  width={55}
+                  tickFormatter={fmtK}
+                />
+                <Tooltip
+                  {...ttStyle}
+                  formatter={(v: number, n: string) => [`₹${fmtK(v)} Cr`, n]}
+                />
+                <ReferenceLine y={0} stroke="#475569" />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar
+                  dataKey="fii"
+                  name="FII"
+                  fill="#3b82f6"
+                  radius={[2, 2, 0, 0]}
+                  opacity={0.8}
+                />
+                <Bar
+                  dataKey="dii"
+                  name="DII"
+                  fill="#22c55e"
+                  radius={[2, 2, 0, 0]}
+                  opacity={0.8}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
       {sub === "crude" && (
         <>
           <div className="text-xs text-slate-500 mb-2">
-            Crude Oil Prices (USD/bbl) — WTI (Orange), Brent (Amber)
+            Crude Oil Prices (USD/bbl) — WTI (Orange), Brent (Amber) —{" "}
+            {MONTH_NAMES[selectedMonth]} {selectedYear}
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart
-              data={MACRO_CRUDE.slice(-sliceDays)}
-              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="#1e293b"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                interval={20}
-              />
-              <YAxis
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                domain={["auto", "auto"]}
-                width={40}
-              />
-              <Tooltip {...ttStyle} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar
-                dataKey="wti"
-                name="Crude WTI"
-                fill="#f97316"
-                radius={[2, 2, 0, 0]}
-                opacity={0.8}
-              />
-              <Bar
-                dataKey="brent"
-                name="Crude Brent"
-                fill="#eab308"
-                radius={[2, 2, 0, 0]}
-                opacity={0.8}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+          {crudeData.length === 0 ? (
+            <NoDataMsg />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart
+                data={crudeData}
+                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#1e293b"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  interval={xAxisInterval(crudeData.length)}
+                />
+                <YAxis
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  domain={["auto", "auto"]}
+                  width={40}
+                />
+                <Tooltip {...ttStyle} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar
+                  dataKey="wti"
+                  name="Crude WTI"
+                  fill="#f97316"
+                  radius={[2, 2, 0, 0]}
+                  opacity={0.8}
+                />
+                <Bar
+                  dataKey="brent"
+                  name="Crude Brent"
+                  fill="#eab308"
+                  radius={[2, 2, 0, 0]}
+                  opacity={0.8}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
       {sub === "gsec" && (
         <>
           <div className="text-xs text-slate-500 mb-2">
-            G-Sec Yields (%) — 3Y (Blue), 5Y (Green), 10Y (Orange)
+            G-Sec Yields (%) — 3Y (Blue), 5Y (Green), 10Y (Orange) —{" "}
+            {MONTH_NAMES[selectedMonth]} {selectedYear}
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart
-              data={MACRO_GSEC.slice(-sliceDays)}
-              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                interval={20}
-              />
-              <YAxis
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                domain={["auto", "auto"]}
-                width={36}
-              />
-              <Tooltip
-                {...ttStyle}
-                formatter={(v: number, n: string) => [`${v}%`, n]}
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line
-                type="monotone"
-                dataKey="y3"
-                name="3Y G-Sec"
-                stroke="#3b82f6"
-                dot={false}
-                strokeWidth={2}
-              />
-              <Line
-                type="monotone"
-                dataKey="y5"
-                name="5Y G-Sec"
-                stroke="#22c55e"
-                dot={false}
-                strokeWidth={2}
-              />
-              <Line
-                type="monotone"
-                dataKey="y10"
-                name="10Y G-Sec"
-                stroke="#f97316"
-                dot={false}
-                strokeWidth={2}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {gsecData.length === 0 ? (
+            <NoDataMsg />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart
+                data={gsecData}
+                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  interval={xAxisInterval(gsecData.length)}
+                />
+                <YAxis
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  domain={["auto", "auto"]}
+                  width={36}
+                />
+                <Tooltip
+                  {...ttStyle}
+                  formatter={(v: number, n: string) => [`${v}%`, n]}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line
+                  type="monotone"
+                  dataKey="y3"
+                  name="3Y G-Sec"
+                  stroke="#3b82f6"
+                  dot={false}
+                  strokeWidth={2}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="y5"
+                  name="5Y G-Sec"
+                  stroke="#22c55e"
+                  dot={false}
+                  strokeWidth={2}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="y10"
+                  name="10Y G-Sec"
+                  stroke="#f97316"
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
     </Card>
@@ -2543,6 +3547,17 @@ function DailyIndicatorsCard() {
 
 function MoMIndicatorsCard() {
   const [sub, setSub] = useState<"cpiwpi" | "autogst" | "pmi">("cpiwpi");
+  // Default: trailing 24 months — start from year 24 months ago
+  const today = new Date();
+  const trailing24Start = new Date(
+    today.getFullYear(),
+    today.getMonth() - 23,
+    1,
+  );
+  const [selectedYear, setSelectedYear] = useState(
+    trailing24Start.getFullYear(),
+  );
+
   const subTabs = [
     { id: "cpiwpi" as const, label: "CPI & WPI", ocid: "macro.mom.cpiwpi.tab" },
     {
@@ -2552,11 +3567,45 @@ function MoMIndicatorsCard() {
     },
     { id: "pmi" as const, label: "PMI", ocid: "macro.mom.pmi.tab" },
   ];
+
+  const cpiWpiData = useMemo(
+    () => MACRO_CPI_WPI_FULL.filter((d) => d.year >= selectedYear),
+    [selectedYear],
+  );
+  const autoGstData = useMemo(
+    () => MACRO_AUTO_GST_FULL.filter((d) => d.year >= selectedYear),
+    [selectedYear],
+  );
+  const pmiData = useMemo(
+    () => MACRO_PMI_FULL.filter((d) => d.year >= selectedYear),
+    [selectedYear],
+  );
+
+  const xInterval = (len: number) =>
+    len <= 12 ? 0 : len <= 24 ? 2 : len <= 48 ? 5 : 11;
+
   return (
     <Card>
-      <h2 className="text-sm font-bold text-slate-100 mb-3">
-        Month-on-Month (MoM) Indicators
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h2 className="text-sm font-bold text-slate-100">
+          Month-on-Month (MoM) Indicators
+        </h2>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">From Year:</span>
+          <select
+            data-ocid="macro.mom.year.select"
+            className={selectCls}
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+          >
+            {YEAR_OPTIONS.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="flex flex-wrap gap-1.5 mb-4">
         {subTabs.map((t) => (
           <button
@@ -2573,162 +3622,176 @@ function MoMIndicatorsCard() {
       {sub === "cpiwpi" && (
         <>
           <div className="text-xs text-slate-500 mb-2">
-            CPI (Blue) & WPI (Green) — MoM % — Last 24 months
+            CPI (Blue) & WPI (Green) — MoM % — From {selectedYear}
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart
-              data={MACRO_CPI_WPI}
-              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                interval={3}
-              />
-              <YAxis
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                domain={["auto", "auto"]}
-                width={34}
-              />
-              <Tooltip
-                {...ttStyle}
-                formatter={(v: number, n: string) => [`${v}%`, n]}
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <ReferenceLine
-                y={4}
-                stroke="#475569"
-                strokeDasharray="4 4"
-                label={{ value: "RBI Target", fill: "#64748b", fontSize: 9 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="cpi"
-                name="CPI"
-                stroke="#3b82f6"
-                dot={false}
-                strokeWidth={2}
-              />
-              <Line
-                type="monotone"
-                dataKey="wpi"
-                name="WPI"
-                stroke="#22c55e"
-                dot={false}
-                strokeWidth={2}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {cpiWpiData.length === 0 ? (
+            <NoDataMsg />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart
+                data={cpiWpiData}
+                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  interval={xInterval(cpiWpiData.length)}
+                />
+                <YAxis
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  domain={["auto", "auto"]}
+                  width={34}
+                />
+                <Tooltip
+                  {...ttStyle}
+                  formatter={(v: number, n: string) => [`${v}%`, n]}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <ReferenceLine
+                  y={4}
+                  stroke="#475569"
+                  strokeDasharray="4 4"
+                  label={{ value: "RBI Target", fill: "#64748b", fontSize: 9 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="cpi"
+                  name="CPI"
+                  stroke="#3b82f6"
+                  dot={false}
+                  strokeWidth={2}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="wpi"
+                  name="WPI"
+                  stroke="#22c55e"
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
       {sub === "autogst" && (
         <>
           <div className="text-xs text-slate-500 mb-2">
-            Auto Sales (Lakhs, bars) & GST Collections (₹ L Cr, line) — MoM
+            Auto Sales (Lakhs, bars) & GST Collections (₹ L Cr, line) — MoM —
+            From {selectedYear}
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart
-              data={MACRO_AUTO_GST}
-              margin={{ top: 4, right: 32, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="#1e293b"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                interval={3}
-              />
-              <YAxis
-                yAxisId="left"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                width={34}
-                domain={["auto", "auto"]}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                width={40}
-                domain={["auto", "auto"]}
-              />
-              <Tooltip {...ttStyle} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar
-                yAxisId="left"
-                dataKey="autoSales"
-                name="Auto Sales (L)"
-                fill="#3b82f6"
-                radius={[2, 2, 0, 0]}
-                opacity={0.8}
-              />
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="gst"
-                name="GST (₹LCr)"
-                stroke="#f97316"
-                dot={false}
-                strokeWidth={2}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+          {autoGstData.length === 0 ? (
+            <NoDataMsg />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart
+                data={autoGstData}
+                margin={{ top: 4, right: 32, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#1e293b"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  interval={xInterval(autoGstData.length)}
+                />
+                <YAxis
+                  yAxisId="left"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  width={34}
+                  domain={["auto", "auto"]}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  width={40}
+                  domain={["auto", "auto"]}
+                />
+                <Tooltip {...ttStyle} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar
+                  yAxisId="left"
+                  dataKey="autoSales"
+                  name="Auto Sales (L)"
+                  fill="#3b82f6"
+                  radius={[2, 2, 0, 0]}
+                  opacity={0.8}
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="gst"
+                  name="GST (₹LCr)"
+                  stroke="#f97316"
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
       {sub === "pmi" && (
         <>
           <div className="text-xs text-slate-500 mb-2">
-            India Manufacturing PMI (Blue) & Services PMI (Green) — MoM
+            India Manufacturing PMI (Blue) & Services PMI (Green) — MoM — From{" "}
+            {selectedYear}
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart
-              data={MACRO_PMI}
-              margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                interval={3}
-              />
-              <YAxis
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                domain={[45, 65]}
-                width={34}
-              />
-              <Tooltip {...ttStyle} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <ReferenceLine
-                y={50}
-                stroke="#ef4444"
-                strokeDasharray="4 4"
-                label={{
-                  value: "Expansion/Contraction",
-                  fill: "#64748b",
-                  fontSize: 9,
-                }}
-              />
-              <Line
-                type="monotone"
-                dataKey="mfg"
-                name="Mfg PMI"
-                stroke="#3b82f6"
-                dot={false}
-                strokeWidth={2}
-              />
-              <Line
-                type="monotone"
-                dataKey="services"
-                name="Services PMI"
-                stroke="#22c55e"
-                dot={false}
-                strokeWidth={2}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {pmiData.length === 0 ? (
+            <NoDataMsg />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart
+                data={pmiData}
+                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  interval={xInterval(pmiData.length)}
+                />
+                <YAxis
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  domain={[45, 65]}
+                  width={34}
+                />
+                <Tooltip {...ttStyle} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <ReferenceLine
+                  y={50}
+                  stroke="#ef4444"
+                  strokeDasharray="4 4"
+                  label={{
+                    value: "Expansion/Contraction",
+                    fill: "#64748b",
+                    fontSize: 9,
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="mfg"
+                  name="Mfg PMI"
+                  stroke="#3b82f6"
+                  dot={false}
+                  strokeWidth={2}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="services"
+                  name="Services PMI"
+                  stroke="#22c55e"
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
     </Card>
@@ -2737,6 +3800,10 @@ function MoMIndicatorsCard() {
 
 function QoQIndicatorsCard() {
   const [sub, setSub] = useState<"gdpcad" | "rates" | "fxreserve">("gdpcad");
+  // Default: trailing 20 quarters ≈ 5 years back
+  const today = new Date();
+  const [selectedYear, setSelectedYear] = useState(today.getFullYear() - 5);
+
   const subTabs = [
     { id: "gdpcad" as const, label: "GDP & CAD", ocid: "macro.qoq.gdpcad.tab" },
     {
@@ -2750,11 +3817,45 @@ function QoQIndicatorsCard() {
       ocid: "macro.qoq.fxreserve.tab",
     },
   ];
+
+  const gdpCadData = useMemo(
+    () => MACRO_GDP_CAD_FULL.filter((d) => d.calStartYear >= selectedYear),
+    [selectedYear],
+  );
+  const ratesData = useMemo(
+    () => MACRO_RATES_FULL.filter((d) => d.calStartYear >= selectedYear),
+    [selectedYear],
+  );
+  const fxAndRatesData = useMemo(
+    () => MACRO_FX_AND_RATES_FULL.filter((d) => d.calStartYear >= selectedYear),
+    [selectedYear],
+  );
+
+  const xInterval = (len: number) =>
+    len <= 8 ? 0 : len <= 16 ? 1 : len <= 32 ? 3 : 7;
+
   return (
     <Card>
-      <h2 className="text-sm font-bold text-slate-100 mb-3">
-        Quarter-on-Quarter (QoQ) Indicators
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h2 className="text-sm font-bold text-slate-100">
+          Quarter-on-Quarter (QoQ) Indicators
+        </h2>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500">From Year:</span>
+          <select
+            data-ocid="macro.qoq.year.select"
+            className={selectCls}
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+          >
+            {YEAR_OPTIONS.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
       <div className="flex flex-wrap gap-1.5 mb-4">
         {subTabs.map((t) => (
           <button
@@ -2771,162 +3872,188 @@ function QoQIndicatorsCard() {
       {sub === "gdpcad" && (
         <>
           <div className="text-xs text-slate-500 mb-2">
-            GDP Growth % (bars, left) & CAD as % of GDP (line, right) — QoQ
+            GDP Growth % (bars, left) & CAD as % of GDP (line, right) — QoQ —
+            From {selectedYear}
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart
-              data={MACRO_GDP_CAD}
-              margin={{ top: 4, right: 36, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="#1e293b"
-                vertical={false}
-              />
-              <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#64748b" }} />
-              <YAxis
-                yAxisId="left"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                domain={["auto", "auto"]}
-                width={34}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                width={34}
-              />
-              <Tooltip {...ttStyle} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <ReferenceLine yAxisId="left" y={0} stroke="#475569" />
-              <Bar
-                yAxisId="left"
-                dataKey="gdp"
-                name="GDP Growth %"
-                radius={[3, 3, 0, 0]}
+          {gdpCadData.length === 0 ? (
+            <NoDataMsg />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart
+                data={gdpCadData}
+                margin={{ top: 4, right: 36, bottom: 0, left: 0 }}
               >
-                {MACRO_GDP_CAD.map((d) => (
-                  <Cell
-                    key={d.date}
-                    fill={d.gdp >= 0 ? "#3b82f6" : "#ef4444"}
-                  />
-                ))}
-              </Bar>
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="cad"
-                name="CAD % GDP"
-                stroke="#f97316"
-                dot={false}
-                strokeWidth={2}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#1e293b"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  interval={xInterval(gdpCadData.length)}
+                />
+                <YAxis
+                  yAxisId="left"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  domain={["auto", "auto"]}
+                  width={34}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  width={34}
+                />
+                <Tooltip {...ttStyle} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <ReferenceLine yAxisId="left" y={0} stroke="#475569" />
+                <Bar
+                  yAxisId="left"
+                  dataKey="gdp"
+                  name="GDP Growth %"
+                  radius={[3, 3, 0, 0]}
+                >
+                  {gdpCadData.map((d) => (
+                    <Cell
+                      key={d.date}
+                      fill={d.gdp >= 0 ? "#3b82f6" : "#ef4444"}
+                    />
+                  ))}
+                </Bar>
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="cad"
+                  name="CAD % GDP"
+                  stroke="#f97316"
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
       {sub === "rates" && (
         <>
           <div className="text-xs text-slate-500 mb-2">
-            Repo Rate % (Blue, left) & FX Reserve USD Bn (Orange, right) — QoQ
+            Repo Rate % (Blue, left) & FX Reserve USD Bn (Orange, right) — QoQ —
+            From {selectedYear}
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart
-              data={MACRO_RATES}
-              margin={{ top: 4, right: 40, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#64748b" }} />
-              <YAxis
-                yAxisId="left"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                domain={["auto", "auto"]}
-                width={34}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                width={45}
-              />
-              <Tooltip {...ttStyle} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="repoRate"
-                name="Repo Rate %"
-                stroke="#3b82f6"
-                dot={{ fill: "#3b82f6", r: 4 }}
-                strokeWidth={2}
-              />
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="fxReserve"
-                name="FX Reserve ($B)"
-                stroke="#f97316"
-                dot={false}
-                strokeWidth={2}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+          {ratesData.length === 0 ? (
+            <NoDataMsg />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart
+                data={ratesData}
+                margin={{ top: 4, right: 40, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  interval={xInterval(ratesData.length)}
+                />
+                <YAxis
+                  yAxisId="left"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  domain={["auto", "auto"]}
+                  width={34}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  width={45}
+                />
+                <Tooltip {...ttStyle} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="repoRate"
+                  name="Repo Rate %"
+                  stroke="#3b82f6"
+                  dot={{ fill: "#3b82f6", r: 4 }}
+                  strokeWidth={2}
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="fxReserve"
+                  name="FX Reserve ($B)"
+                  stroke="#f97316"
+                  dot={false}
+                  strokeWidth={2}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
       {sub === "fxreserve" && (
         <>
           <div className="text-xs text-slate-500 mb-2">
             FX Reserve USD Bn (Purple, left) &amp; Repo Rate % (Blue step-line,
-            right) — QoQ aligned
+            right) — QoQ — From {selectedYear}
           </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart
-              data={MACRO_FX_AND_RATES}
-              margin={{ top: 4, right: 44, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-              <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#64748b" }} />
-              <YAxis
-                yAxisId="left"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                domain={["auto", "auto"]}
-                width={46}
-                tickFormatter={(v: number) => `$${v}B`}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fontSize: 9, fill: "#64748b" }}
-                width={34}
-                tickFormatter={(v: number) => `${v}%`}
-              />
-              <Tooltip
-                {...ttStyle}
-                formatter={(v: number, n: string) =>
-                  n === "FX Reserve (USD Bn)" ? [`$${v}B`, n] : [`${v}%`, n]
-                }
-              />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="fxReserve"
-                name="FX Reserve (USD Bn)"
-                stroke="#a855f7"
-                dot={false}
-                strokeWidth={2}
-              />
-              <Line
-                yAxisId="right"
-                type="stepAfter"
-                dataKey="repoRate"
-                name="Repo Rate %"
-                stroke="#3b82f6"
-                dot={{ fill: "#3b82f6", r: 4 }}
-                strokeWidth={2}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+          {fxAndRatesData.length === 0 ? (
+            <NoDataMsg />
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart
+                data={fxAndRatesData}
+                margin={{ top: 4, right: 44, bottom: 0, left: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  interval={xInterval(fxAndRatesData.length)}
+                />
+                <YAxis
+                  yAxisId="left"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  domain={["auto", "auto"]}
+                  width={46}
+                  tickFormatter={(v: number) => `$${v}B`}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 9, fill: "#64748b" }}
+                  width={34}
+                  tickFormatter={(v: number) => `${v}%`}
+                />
+                <Tooltip
+                  {...ttStyle}
+                  formatter={(v: number, n: string) =>
+                    n === "FX Reserve (USD Bn)" ? [`$${v}B`, n] : [`${v}%`, n]
+                  }
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="fxReserve"
+                  name="FX Reserve (USD Bn)"
+                  stroke="#a855f7"
+                  dot={false}
+                  strokeWidth={2}
+                />
+                <Line
+                  yAxisId="right"
+                  type="stepAfter"
+                  dataKey="repoRate"
+                  name="Repo Rate %"
+                  stroke="#3b82f6"
+                  dot={{ fill: "#3b82f6", r: 4 }}
+                  strokeWidth={2}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
         </>
       )}
     </Card>
@@ -3204,6 +4331,376 @@ function TabSectorFII() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// TAB 6: INDICES AND SECTORS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const NIFTY_COLORS = [
+  "#3b82f6",
+  "#22c55e",
+  "#f97316",
+  "#a855f7",
+  "#ec4899",
+  "#14b8a6",
+  "#eab308",
+  "#ef4444",
+  "#06b6d4",
+  "#84cc16",
+  "#f43f5e",
+  "#8b5cf6",
+  "#10b981",
+  "#fb923c",
+  "#6366f1",
+  "#0ea5e9",
+  "#d946ef",
+  "#4ade80",
+  "#fbbf24",
+  "#60a5fa",
+  "#34d399",
+  "#f87171",
+  "#c084fc",
+  "#38bdf8",
+  "#a3e635",
+];
+
+function TabIndicesSectors() {
+  const [selectedNifty, setSelectedNifty] = useState<string[]>(["NIFTY50"]);
+  const [selectedFII, setSelectedFII] = useState<string[]>([]);
+  const [activeConstituent, setActiveConstituent] = useState<string>("NIFTY50");
+
+  const toggleNifty = useCallback((idx: string) => {
+    setSelectedNifty((prev) => {
+      const next = prev.includes(idx)
+        ? prev.filter((s) => s !== idx)
+        : [...prev, idx];
+      if (!prev.includes(idx)) setActiveConstituent(idx);
+      return next;
+    });
+  }, []);
+
+  const toggleFII = useCallback((sec: string) => {
+    setSelectedFII((prev) => {
+      const next = prev.includes(sec)
+        ? prev.filter((s) => s !== sec)
+        : [...prev, sec];
+      if (!prev.includes(sec)) setActiveConstituent(sec);
+      return next;
+    });
+  }, []);
+
+  // All selected items (nifty first, then fii)
+  const allSelected = useMemo(
+    () => [
+      ...selectedNifty.map((n) => ({ name: n, type: "Nifty" as const })),
+      ...selectedFII.map((s) => ({ name: s, type: "FII" as const })),
+    ],
+    [selectedNifty, selectedFII],
+  );
+
+  // Constituents for the active selected item
+  const activeStocks = useMemo(() => {
+    if (NIFTY_INDEX_STOCKS[activeConstituent])
+      return NIFTY_INDEX_STOCKS[activeConstituent];
+    // For FII sectors reuse SECTOR_REAL_STOCKS then SECTOR_STOCKS
+    return (
+      SECTOR_REAL_STOCKS[activeConstituent]?.map((s) => ({
+        name: s.name,
+        symbol: s.symbol,
+      })) ??
+      (SECTOR_STOCKS[activeConstituent] ?? []).map((s) => ({
+        name: s.name,
+        symbol: s.symbol,
+      }))
+    );
+  }, [activeConstituent]);
+
+  // If active item was deselected, pick the first available
+  useEffect(() => {
+    const allNames = allSelected.map((a) => a.name);
+    if (allNames.length > 0 && !allNames.includes(activeConstituent)) {
+      setActiveConstituent(allNames[0]);
+    }
+  }, [allSelected, activeConstituent]);
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ── Left Panel: Sector / Index Selector ── */}
+      <div className="space-y-4">
+        {/* Nifty Sectors group */}
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-slate-100">Nifty Indices</h2>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedNifty([...NIFTY_INDICES]);
+                  setActiveConstituent(NIFTY_INDICES[0]);
+                }}
+                data-ocid="indices.nifty.selectall.button"
+                className="px-2.5 py-1 text-xs border border-slate-600 text-slate-400 rounded-lg hover:border-blue-500 hover:text-blue-400 transition-colors"
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedNifty([])}
+                data-ocid="indices.nifty.clearall.button"
+                className="px-2.5 py-1 text-xs border border-slate-600 text-slate-400 rounded-lg hover:border-red-500 hover:text-red-400 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {NIFTY_INDICES.map((idx, i) => {
+              const selected = selectedNifty.includes(idx);
+              const color = NIFTY_COLORS[i % NIFTY_COLORS.length];
+              return (
+                <label
+                  key={idx}
+                  style={{
+                    borderColor: selected ? color : "#334155",
+                    background: selected ? `${color}22` : "transparent",
+                  }}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded border cursor-pointer transition-colors"
+                  onClick={() => selected && setActiveConstituent(idx)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      selected && setActiveConstituent(idx);
+                    }
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => toggleNifty(idx)}
+                    data-ocid={`indices.nifty.checkbox.${i + 1}`}
+                    className="accent-blue-500"
+                  />
+                  <span
+                    style={{
+                      color: selected ? color : "#94a3b8",
+                      fontSize: 11,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {idx}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* FII Sectors group */}
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-slate-100">FII Sectors</h2>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedFII([...SECTORS]);
+                  setActiveConstituent(SECTORS[0]);
+                }}
+                data-ocid="indices.fii.selectall.button"
+                className="px-2.5 py-1 text-xs border border-slate-600 text-slate-400 rounded-lg hover:border-blue-500 hover:text-blue-400 transition-colors"
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedFII([])}
+                data-ocid="indices.fii.clearall.button"
+                className="px-2.5 py-1 text-xs border border-slate-600 text-slate-400 rounded-lg hover:border-red-500 hover:text-red-400 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {SECTORS.map((sec, i) => {
+              const selected = selectedFII.includes(sec);
+              const color = SECTOR_COLORS[i % SECTOR_COLORS.length];
+              return (
+                <label
+                  key={sec}
+                  style={{
+                    borderColor: selected ? color : "#334155",
+                    background: selected ? `${color}22` : "transparent",
+                  }}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded border cursor-pointer transition-colors"
+                  onClick={() => selected && setActiveConstituent(sec)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      selected && setActiveConstituent(sec);
+                    }
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    onChange={() => toggleFII(sec)}
+                    data-ocid={`indices.fii.checkbox.${i + 1}`}
+                    className="accent-blue-500"
+                  />
+                  <span
+                    style={{
+                      color: selected ? color : "#94a3b8",
+                      fontSize: 11,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {sec}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
+      {/* ── Right Panel: Constituent Companies ── */}
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 className="text-sm font-bold text-slate-100">
+            Constituent Companies
+          </h2>
+          {allSelected.length > 0 && (
+            <div
+              className="flex flex-wrap gap-1"
+              data-ocid="indices.constituents.tabs"
+            >
+              {allSelected.map((item, i) => {
+                const isNifty = item.type === "Nifty";
+                const colorArr = isNifty ? NIFTY_COLORS : SECTOR_COLORS;
+                const colorIdx = isNifty
+                  ? NIFTY_INDICES.indexOf(item.name)
+                  : SECTORS.indexOf(item.name);
+                const color = colorArr[colorIdx % colorArr.length];
+                const isActive = activeConstituent === item.name;
+                return (
+                  <button
+                    key={item.name}
+                    type="button"
+                    onClick={() => setActiveConstituent(item.name)}
+                    data-ocid={`indices.constituents.tab.${i + 1}`}
+                    style={{
+                      borderColor: isActive ? color : "#334155",
+                      background: isActive ? `${color}33` : "transparent",
+                      color: isActive ? color : "#94a3b8",
+                    }}
+                    className="px-2 py-0.5 text-xs rounded border transition-colors font-medium"
+                  >
+                    {item.name}
+                    <span
+                      className="ml-1 text-[10px] opacity-60"
+                      style={{ color: isActive ? color : "#64748b" }}
+                    >
+                      {item.type}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {allSelected.length === 0 ? (
+          <div
+            className="h-64 flex flex-col items-center justify-center text-slate-500 text-sm gap-2"
+            data-ocid="indices.constituents.empty_state"
+          >
+            <div className="text-3xl opacity-30">📊</div>
+            <div>Select an index or sector to view constituent companies</div>
+          </div>
+        ) : (
+          <div data-ocid="indices.constituents.panel">
+            {/* Active index/sector header */}
+            <div className="mb-2">
+              {(() => {
+                const isNifty = NIFTY_INDICES.includes(activeConstituent);
+                const colorArr = isNifty ? NIFTY_COLORS : SECTOR_COLORS;
+                const colorIdx = isNifty
+                  ? NIFTY_INDICES.indexOf(activeConstituent)
+                  : SECTORS.indexOf(activeConstituent);
+                const color = colorArr[colorIdx % colorArr.length];
+                return (
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="px-2 py-0.5 rounded text-xs font-bold"
+                      style={{ background: `${color}33`, color }}
+                    >
+                      {activeConstituent}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {isNifty ? "Nifty Index" : "FII Sector"} ·{" "}
+                      {activeStocks.length} constituents
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+            <div
+              className="overflow-auto max-h-[520px]"
+              data-ocid="indices.constituents.table"
+            >
+              <table className="w-full text-xs border-collapse">
+                <thead className="sticky top-0 bg-slate-900">
+                  <tr>
+                    {["#", "Company Name", "Symbol"].map((h) => (
+                      <th
+                        key={h}
+                        className="text-left px-3 py-2.5 text-slate-400 font-medium border-b border-slate-700"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeStocks.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={3}
+                        className="px-3 py-8 text-center text-slate-500"
+                        data-ocid="indices.constituents.stocks.empty_state"
+                      >
+                        No constituent data available for this selection
+                      </td>
+                    </tr>
+                  ) : (
+                    activeStocks.map((s, i) => (
+                      <tr
+                        key={s.symbol}
+                        className="hover:bg-slate-700/50 transition-colors"
+                        data-ocid={`indices.constituents.row.${i + 1}`}
+                      >
+                        <td className="px-3 py-2 text-slate-500 border-b border-slate-800 w-8">
+                          {i + 1}
+                        </td>
+                        <td className="px-3 py-2 text-slate-200 border-b border-slate-800">
+                          {s.name}
+                        </td>
+                        <td className="px-3 py-2 border-b border-slate-800">
+                          <span className="bg-blue-950 text-blue-400 px-2 py-0.5 rounded text-xs font-medium">
+                            {s.symbol}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ROOT APP
 // ═══════════════════════════════════════════════════════════════════════════════
 const TABS = [
@@ -3212,6 +4709,7 @@ const TABS = [
   { label: "Stocks and Stocks Options OI", comp: <TabStocks /> },
   { label: "Macro Indicators", comp: <TabMacro /> },
   { label: "Fortnightly Sector Wise FII Data", comp: <TabSectorFII /> },
+  { label: "Indices and Sectors", comp: <TabIndicesSectors /> },
 ];
 
 export default function App() {
