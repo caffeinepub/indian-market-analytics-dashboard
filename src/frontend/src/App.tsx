@@ -579,6 +579,130 @@ function mergePCROIFiltered(
     }));
 }
 
+// ─── MARKET PERIOD BOUNDARY UTILITIES ─────────────────────────────────────────
+// Regime change date: 1 Sep 2025
+const SEPT_2025_CUTOFF = new Date(2025, 8, 1); // Month is 0-indexed
+
+/**
+ * Returns the last occurrence of a given weekday in a calendar month.
+ * weekday: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+ */
+function getLastWeekdayOfMonth(
+  year: number,
+  month: number,
+  weekday: number,
+): Date {
+  // Start from last day of month and go back
+  const lastDay = new Date(year, month + 1, 0); // day 0 of next month = last day of this month
+  const diff = (lastDay.getDay() - weekday + 7) % 7;
+  const result = new Date(lastDay);
+  result.setDate(lastDay.getDate() - diff);
+  return result;
+}
+
+/**
+ * Returns the start of the market week containing `date`.
+ * On/after 1 Sep 2025: week starts on Wednesday
+ * Before 1 Sep 2025: week starts on Friday of the PREVIOUS week
+ */
+function getMarketWeekStart(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const isNewRegime = d >= SEPT_2025_CUTOFF;
+  const startDow = isNewRegime ? 3 : 5; // 3=Wed, 5=Fri
+  const currentDow = d.getDay();
+  let daysBack = (currentDow - startDow + 7) % 7;
+  // For old regime (Fri start): if today is Thu (4), daysBack would be 6 (go back 6 to previous Fri) — correct
+  // For new regime (Wed start): if today is Tue (2), daysBack would be 6 (go back 6 to previous Wed) — correct
+  const result = new Date(d);
+  result.setDate(d.getDate() - daysBack);
+  return result;
+}
+
+/**
+ * Returns the end of the market week containing `date`.
+ * On/after 1 Sep 2025: week ends on Tuesday (next week's Tuesday)
+ * Before 1 Sep 2025: week ends on Thursday of the current week
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _getMarketWeekEnd(date: Date): Date {
+  const start = getMarketWeekStart(date);
+  const result = new Date(start);
+  // New regime: Wed→Tue = 6 days forward; Old regime: Fri→Thu = 6 days forward
+  result.setDate(start.getDate() + 6);
+  return result;
+}
+// Keep reference to avoid tree-shaking of the week utilities
+void _getMarketWeekEnd;
+
+/**
+ * Returns the start of the market month containing `date`.
+ * On/after 1 Sep 2025: last Wednesday of previous calendar month
+ * Before 1 Sep 2025: last Friday of previous calendar month
+ */
+function getMarketMonthStart(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const isNewRegime = d >= SEPT_2025_CUTOFF;
+  const prevMonth = d.getMonth() === 0 ? 11 : d.getMonth() - 1;
+  const prevYear = d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear();
+  const weekday = isNewRegime ? 3 : 5; // 3=Wed, 5=Fri
+  return getLastWeekdayOfMonth(prevYear, prevMonth, weekday);
+}
+
+/**
+ * Returns the end of the market month containing `date`.
+ * On/after 1 Sep 2025: last Tuesday of current calendar month
+ * Before 1 Sep 2025: last Thursday of current calendar month
+ */
+function getMarketMonthEnd(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const isNewRegime = d >= SEPT_2025_CUTOFF;
+  const weekday = isNewRegime ? 2 : 4; // 2=Tue, 4=Thu
+  return getLastWeekdayOfMonth(d.getFullYear(), d.getMonth(), weekday);
+}
+
+const SHORT_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+function formatDateShort(d: Date): string {
+  return `${d.getDate()} ${SHORT_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/**
+ * Given a selected year+month (e.g. from OI panel dropdowns), returns
+ * the market-period-aware range label for those 4 months.
+ * Uses the market month boundaries for the END month (selected month).
+ */
+function getOIRangeLabel(endYear: number, endMonth: number): string {
+  const endMonthDate = new Date(endYear, endMonth, 15);
+  const monthEnd = getMarketMonthEnd(endMonthDate);
+
+  // Start = 3 months back from the selected month
+  const startMonthDate = new Date(endYear, endMonth - 3, 15);
+  const startNorm = new Date(
+    startMonthDate.getFullYear(),
+    startMonthDate.getMonth(),
+    15,
+  );
+  const monthStart = getMarketMonthStart(startNorm);
+
+  return `${formatDateShort(monthStart)} – ${formatDateShort(monthEnd)}`;
+}
+
 // ─── MACRO DATA ────────────────────────────────────────────────────────────────
 
 // Helper: year options from 2005 to current year
@@ -588,7 +712,7 @@ function getYearOptions(): number[] {
   for (let y = 2005; y <= currentYear; y++) years.push(y);
   return years;
 }
-const YEAR_OPTIONS = getYearOptions();
+const _YEAR_OPTIONS = getYearOptions();
 const MONTH_NAMES = [
   "Jan",
   "Feb",
@@ -2814,7 +2938,8 @@ function IndexOIPanel({
   );
 
   const fourMonthRange = getFourMonthRange(oiYear, oiMonth);
-  const rangeLabel = `${MONTH_NAMES[fourMonthRange[0].month]} ${fourMonthRange[0].year} – ${MONTH_NAMES[fourMonthRange[3].month]} ${fourMonthRange[3].year}`;
+  const calRangeLabel = `${MONTH_NAMES[fourMonthRange[0].month]} ${fourMonthRange[0].year} – ${MONTH_NAMES[fourMonthRange[3].month]} ${fourMonthRange[3].year}`;
+  const marketRangeLabel = getOIRangeLabel(oiYear, oiMonth);
 
   return (
     <Card>
@@ -2858,8 +2983,12 @@ function IndexOIPanel({
           ))}
         </select>
         <span className="text-xs text-slate-500 ml-1">
-          Showing: <span className="text-slate-300">{rangeLabel}</span>
+          Showing: <span className="text-slate-300">{calRangeLabel}</span>
         </span>
+      </div>
+      <div className="text-xs text-slate-500 mb-2">
+        Market Period:{" "}
+        <span className="text-blue-400 font-medium">{marketRangeLabel}</span>
       </div>
       {merged.length === 0 ? (
         <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
@@ -3140,7 +3269,8 @@ function StockOIPanel({ sym }: { sym: string }) {
   );
 
   const fourMonthRange = getFourMonthRange(oiYear, oiMonth);
-  const rangeLabel = `${MONTH_NAMES[fourMonthRange[0].month]} ${fourMonthRange[0].year} – ${MONTH_NAMES[fourMonthRange[3].month]} ${fourMonthRange[3].year}`;
+  const calRangeLabel = `${MONTH_NAMES[fourMonthRange[0].month]} ${fourMonthRange[0].year} – ${MONTH_NAMES[fourMonthRange[3].month]} ${fourMonthRange[3].year}`;
+  const marketRangeLabel = getOIRangeLabel(oiYear, oiMonth);
 
   if (!hasOptions) {
     return (
@@ -3197,8 +3327,12 @@ function StockOIPanel({ sym }: { sym: string }) {
           ))}
         </select>
         <span className="text-xs text-slate-500 ml-1">
-          Showing: <span className="text-slate-300">{rangeLabel}</span>
+          Showing: <span className="text-slate-300">{calRangeLabel}</span>
         </span>
+      </div>
+      <div className="text-xs text-slate-500 mb-2">
+        Market Period:{" "}
+        <span className="text-blue-400 font-medium">{marketRangeLabel}</span>
       </div>
       {merged.length === 0 ? (
         <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
@@ -3238,11 +3372,168 @@ function NoDataMsg() {
   );
 }
 
+// ─── Date Window Helpers ──────────────────────────────────────────────────────
+
+function addMonthsToDate(date: Date, n: number): Date {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + n);
+  return d;
+}
+
+function getDailyWindow<T extends { year: number; month: number }>(
+  data: T[],
+  endDate: Date,
+  monthsBack: number,
+): T[] {
+  const start = addMonthsToDate(endDate, -monthsBack);
+  const sVal = start.getFullYear() * 12 + start.getMonth();
+  const eVal = endDate.getFullYear() * 12 + endDate.getMonth();
+  return data.filter((d) => {
+    const dVal = d.year * 12 + d.month;
+    return dVal >= sVal && dVal <= eVal;
+  });
+}
+
+function getQtrWindow<
+  T extends { calStartYear: number; fyYear: number; date: string },
+>(data: T[], endDate: Date, quartersBack: number): T[] {
+  // Convert endDate to a sequential calendar quarter index
+  const endQtrYear = endDate.getFullYear();
+  const endQtrMonth = endDate.getMonth(); // 0-indexed
+  const calQEnd = endQtrYear * 4 + Math.floor(endQtrMonth / 3);
+  const calQStart = calQEnd - quartersBack + 1;
+
+  return data.filter((d) => {
+    // Parse qNum from date label e.g. "Q1FY06" -> 1
+    const qMatch = d.date.match(/Q(\d)/);
+    const qNum = qMatch ? Number.parseInt(qMatch[1], 10) : 1;
+    // Q1=Apr-Jun (calQNum=1), Q2=Jul-Sep (calQNum=2), Q3=Oct-Dec (calQNum=3), Q4=Jan-Mar (calQNum=0)
+    let calQNum: number;
+    if (qNum === 1)
+      calQNum = 1; // Apr-Jun
+    else if (qNum === 2)
+      calQNum = 2; // Jul-Sep
+    else if (qNum === 3)
+      calQNum = 3; // Oct-Dec
+    else calQNum = 0; // Jan-Mar (Q4)
+    const calQ = d.calStartYear * 4 + calQNum;
+    return calQ >= calQStart && calQ <= calQEnd;
+  });
+}
+
+function formatMonthLabel(date: Date): string {
+  return `${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function formatQtrLabel(date: Date): string {
+  // Convert date to FY quarter label
+  const m = date.getMonth(); // 0-indexed
+  const y = date.getFullYear();
+  // FY: Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar
+  let q: number;
+  let fy: number;
+  if (m >= 3 && m <= 5) {
+    q = 1;
+    fy = y + 1;
+  } else if (m >= 6 && m <= 8) {
+    q = 2;
+    fy = y + 1;
+  } else if (m >= 9 && m <= 11) {
+    q = 3;
+    fy = y + 1;
+  } else {
+    // Jan-Mar
+    q = 4;
+    fy = y;
+  }
+  return `Q${q}FY${String(fy).slice(2)}`;
+}
+
+// ─── Navigation Controls ─────────────────────────────────────────────────────
+
+function WindowNav({
+  label,
+  onPrev,
+  onNext,
+  disableNext,
+  dateValue,
+  onDateChange,
+  dateOcid,
+  prevOcid,
+  nextOcid,
+}: {
+  label: string;
+  onPrev: () => void;
+  onNext: () => void;
+  disableNext: boolean;
+  dateValue: string;
+  onDateChange: (v: string) => void;
+  dateOcid: string;
+  prevOcid: string;
+  nextOcid: string;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        data-ocid={prevOcid}
+        onClick={onPrev}
+        className="w-7 h-7 flex items-center justify-center rounded-md border border-slate-600 text-slate-300 hover:border-blue-500 hover:text-blue-400 transition-colors text-sm"
+        title="Go further back"
+      >
+        ◀
+      </button>
+      <span className="text-xs text-slate-300 min-w-[130px] text-center font-medium">
+        {label}
+      </span>
+      <button
+        type="button"
+        data-ocid={nextOcid}
+        onClick={onNext}
+        disabled={disableNext}
+        className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors text-sm ${
+          disableNext
+            ? "border-slate-700 text-slate-600 cursor-not-allowed"
+            : "border-slate-600 text-slate-300 hover:border-blue-500 hover:text-blue-400"
+        }`}
+        title="Go forward"
+      >
+        ▶
+      </button>
+      <input
+        type="date"
+        data-ocid={dateOcid}
+        value={dateValue}
+        min="2005-01-01"
+        max={today}
+        onChange={(e) => onDateChange(e.target.value)}
+        className="bg-slate-800 border border-slate-600 rounded-md px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+      />
+    </div>
+  );
+}
+
+// ─── DailyIndicatorsCard ──────────────────────────────────────────────────────
+
 function DailyIndicatorsCard() {
   const [sub, setSub] = useState<"usd" | "fiidii" | "crude" | "gsec">("usd");
-  const today = new Date();
-  const [selectedYear, setSelectedYear] = useState(today.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(today.getMonth());
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [anchorDateStr, setAnchorDateStr] = useState(todayStr);
+  const [windowOffset, setWindowOffset] = useState(0);
+  const touchStartX = useRef(0);
+
+  const anchorDate = useMemo(() => new Date(anchorDateStr), [anchorDateStr]);
+  const endDate = useMemo(
+    () => addMonthsToDate(anchorDate, windowOffset),
+    [anchorDate, windowOffset],
+  );
+  const startDate = useMemo(() => addMonthsToDate(endDate, -12), [endDate]);
+
+  const rangeLabel = `${formatMonthLabel(startDate)} – ${formatMonthLabel(endDate)}`;
+  const marketStartDate = getMarketMonthStart(endDate);
+  const marketEndDate = getMarketMonthEnd(endDate);
+  const marketRangeLabel = `${formatDateShort(marketStartDate)} – ${formatDateShort(marketEndDate)}`;
 
   const subTabs = [
     { id: "usd" as const, label: "USD/INR", ocid: "macro.daily.usdinr.tab" },
@@ -3260,68 +3551,59 @@ function DailyIndicatorsCard() {
   ];
 
   const usdData = useMemo(
-    () =>
-      MACRO_USDINT_FULL.filter(
-        (d) => d.year === selectedYear && d.month === selectedMonth,
-      ),
-    [selectedYear, selectedMonth],
+    () => getDailyWindow(MACRO_USDINT_FULL, endDate, 12),
+    [endDate],
   );
   const fiiData = useMemo(
-    () =>
-      MACRO_FII_FULL.filter(
-        (d) => d.year === selectedYear && d.month === selectedMonth,
-      ),
-    [selectedYear, selectedMonth],
+    () => getDailyWindow(MACRO_FII_FULL, endDate, 12),
+    [endDate],
   );
   const crudeData = useMemo(
-    () =>
-      MACRO_CRUDE_FULL.filter(
-        (d) => d.year === selectedYear && d.month === selectedMonth,
-      ),
-    [selectedYear, selectedMonth],
+    () => getDailyWindow(MACRO_CRUDE_FULL, endDate, 12),
+    [endDate],
   );
   const gsecData = useMemo(
-    () =>
-      MACRO_GSEC_FULL.filter(
-        (d) => d.year === selectedYear && d.month === selectedMonth,
-      ),
-    [selectedYear, selectedMonth],
+    () => getDailyWindow(MACRO_GSEC_FULL, endDate, 12),
+    [endDate],
   );
 
   const xAxisInterval = (len: number) => (len <= 10 ? 0 : len <= 20 ? 2 : 5);
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (dx > 50) setWindowOffset((o) => o - 1);
+    if (dx < -50) setWindowOffset((o) => Math.min(0, o + 1));
+  };
+
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <h2 className="text-sm font-bold text-slate-100">Daily Indicators</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Year:</span>
-          <select
-            data-ocid="macro.daily.year.select"
-            className={selectCls}
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-          >
-            {YEAR_OPTIONS.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-          <span className="text-xs text-slate-500">Month:</span>
-          <select
-            data-ocid="macro.daily.month.select"
-            className={selectCls}
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(Number(e.target.value))}
-          >
-            {MONTH_NAMES.map((m, i) => (
-              <option key={m} value={i}>
-                {m}
-              </option>
-            ))}
-          </select>
+        <div>
+          <h2 className="text-sm font-bold text-slate-100">Daily Indicators</h2>
+          <div className="text-xs text-slate-500 mt-0.5">
+            Current Market Month:{" "}
+            <span className="text-blue-400 font-medium">
+              {marketRangeLabel}
+            </span>
+          </div>
         </div>
+        <WindowNav
+          label={rangeLabel}
+          onPrev={() => setWindowOffset((o) => o - 1)}
+          onNext={() => setWindowOffset((o) => Math.min(0, o + 1))}
+          disableNext={windowOffset >= 0}
+          dateValue={anchorDateStr}
+          onDateChange={(v) => {
+            setAnchorDateStr(v);
+            setWindowOffset(0);
+          }}
+          dateOcid="macro.daily.date.input"
+          prevOcid="macro.daily.prev.button"
+          nextOcid="macro.daily.next.button"
+        />
       </div>
       <div className="flex flex-wrap gap-1.5 mb-4">
         {subTabs.map((t) => (
@@ -3336,227 +3618,236 @@ function DailyIndicatorsCard() {
           </button>
         ))}
       </div>
-      {sub === "usd" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            USD/INR Exchange Rate (₹/USD) — Daily — {MONTH_NAMES[selectedMonth]}{" "}
-            {selectedYear}
-          </div>
-          {usdData.length === 0 ? (
-            <NoDataMsg />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart
-                data={usdData}
-                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 10, fill: "#64748b" }}
-                  interval={xAxisInterval(usdData.length)}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: "#64748b" }}
-                  domain={["auto", "auto"]}
-                  width={50}
-                />
-                <Tooltip
-                  {...ttStyle}
-                  formatter={(v: number) => [`₹${v}`, "USD/INR"]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#3b82f6"
-                  dot={false}
-                  strokeWidth={2}
-                  name="USD/INR"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
-      {sub === "fiidii" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            FII & DII Daily Flows (₹ Cr) — FII (Blue), DII (Green) —{" "}
-            {MONTH_NAMES[selectedMonth]} {selectedYear}
-          </div>
-          {fiiData.length === 0 ? (
-            <NoDataMsg />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart
-                data={fiiData}
-                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#1e293b"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  interval={xAxisInterval(fiiData.length)}
-                />
-                <YAxis
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  width={55}
-                  tickFormatter={fmtK}
-                />
-                <Tooltip
-                  {...ttStyle}
-                  formatter={(v: number, n: string) => [`₹${fmtK(v)} Cr`, n]}
-                />
-                <ReferenceLine y={0} stroke="#475569" />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar
-                  dataKey="fii"
-                  name="FII"
-                  fill="#3b82f6"
-                  radius={[2, 2, 0, 0]}
-                  opacity={0.8}
-                />
-                <Bar
-                  dataKey="dii"
-                  name="DII"
-                  fill="#22c55e"
-                  radius={[2, 2, 0, 0]}
-                  opacity={0.8}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
-      {sub === "crude" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            Crude Oil Prices (USD/bbl) — WTI (Orange), Brent (Amber) —{" "}
-            {MONTH_NAMES[selectedMonth]} {selectedYear}
-          </div>
-          {crudeData.length === 0 ? (
-            <NoDataMsg />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart
-                data={crudeData}
-                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#1e293b"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  interval={xAxisInterval(crudeData.length)}
-                />
-                <YAxis
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  domain={["auto", "auto"]}
-                  width={40}
-                />
-                <Tooltip {...ttStyle} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar
-                  dataKey="wti"
-                  name="Crude WTI"
-                  fill="#f97316"
-                  radius={[2, 2, 0, 0]}
-                  opacity={0.8}
-                />
-                <Bar
-                  dataKey="brent"
-                  name="Crude Brent"
-                  fill="#eab308"
-                  radius={[2, 2, 0, 0]}
-                  opacity={0.8}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
-      {sub === "gsec" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            G-Sec Yields (%) — 3Y (Blue), 5Y (Green), 10Y (Orange) —{" "}
-            {MONTH_NAMES[selectedMonth]} {selectedYear}
-          </div>
-          {gsecData.length === 0 ? (
-            <NoDataMsg />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart
-                data={gsecData}
-                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  interval={xAxisInterval(gsecData.length)}
-                />
-                <YAxis
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  domain={["auto", "auto"]}
-                  width={36}
-                />
-                <Tooltip
-                  {...ttStyle}
-                  formatter={(v: number, n: string) => [`${v}%`, n]}
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line
-                  type="monotone"
-                  dataKey="y3"
-                  name="3Y G-Sec"
-                  stroke="#3b82f6"
-                  dot={false}
-                  strokeWidth={2}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="y5"
-                  name="5Y G-Sec"
-                  stroke="#22c55e"
-                  dot={false}
-                  strokeWidth={2}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="y10"
-                  name="10Y G-Sec"
-                  stroke="#f97316"
-                  dot={false}
-                  strokeWidth={2}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
+      <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {sub === "usd" && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              USD/INR Exchange Rate (₹/USD) — Daily — {rangeLabel}
+            </div>
+            {usdData.length === 0 ? (
+              <NoDataMsg />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart
+                  data={usdData}
+                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10, fill: "#64748b" }}
+                    interval={xAxisInterval(usdData.length)}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "#64748b" }}
+                    domain={["auto", "auto"]}
+                    width={50}
+                  />
+                  <Tooltip
+                    {...ttStyle}
+                    formatter={(v: number) => [`₹${v}`, "USD/INR"]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#3b82f6"
+                    dot={false}
+                    strokeWidth={2}
+                    name="USD/INR"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </>
+        )}
+        {sub === "fiidii" && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              FII & DII Daily Flows (₹ Cr) — FII (Blue), DII (Green) —{" "}
+              {rangeLabel}
+            </div>
+            {fiiData.length === 0 ? (
+              <NoDataMsg />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <ComposedChart
+                  data={fiiData}
+                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#1e293b"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    interval={xAxisInterval(fiiData.length)}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    width={55}
+                    tickFormatter={fmtK}
+                  />
+                  <Tooltip
+                    {...ttStyle}
+                    formatter={(v: number, n: string) => [`₹${fmtK(v)} Cr`, n]}
+                  />
+                  <ReferenceLine y={0} stroke="#475569" />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar
+                    dataKey="fii"
+                    name="FII"
+                    fill="#3b82f6"
+                    radius={[2, 2, 0, 0]}
+                    opacity={0.8}
+                  />
+                  <Bar
+                    dataKey="dii"
+                    name="DII"
+                    fill="#22c55e"
+                    radius={[2, 2, 0, 0]}
+                    opacity={0.8}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
+          </>
+        )}
+        {sub === "crude" && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              Crude Oil Prices (USD/bbl) — WTI (Orange), Brent (Amber) —{" "}
+              {rangeLabel}
+            </div>
+            {crudeData.length === 0 ? (
+              <NoDataMsg />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <ComposedChart
+                  data={crudeData}
+                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#1e293b"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    interval={xAxisInterval(crudeData.length)}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    domain={["auto", "auto"]}
+                    width={40}
+                  />
+                  <Tooltip {...ttStyle} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar
+                    dataKey="wti"
+                    name="Crude WTI"
+                    fill="#f97316"
+                    radius={[2, 2, 0, 0]}
+                    opacity={0.8}
+                  />
+                  <Bar
+                    dataKey="brent"
+                    name="Crude Brent"
+                    fill="#eab308"
+                    radius={[2, 2, 0, 0]}
+                    opacity={0.8}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
+          </>
+        )}
+        {sub === "gsec" && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              G-Sec Yields (%) — 3Y (Blue), 5Y (Green), 10Y (Orange) —{" "}
+              {rangeLabel}
+            </div>
+            {gsecData.length === 0 ? (
+              <NoDataMsg />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart
+                  data={gsecData}
+                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    interval={xAxisInterval(gsecData.length)}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    domain={["auto", "auto"]}
+                    width={36}
+                  />
+                  <Tooltip
+                    {...ttStyle}
+                    formatter={(v: number, n: string) => [`${v}%`, n]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="y3"
+                    name="3Y G-Sec"
+                    stroke="#3b82f6"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="y5"
+                    name="5Y G-Sec"
+                    stroke="#22c55e"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="y10"
+                    name="10Y G-Sec"
+                    stroke="#f97316"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </>
+        )}
+      </div>
     </Card>
   );
 }
 
+// ─── MoMIndicatorsCard ────────────────────────────────────────────────────────
+
 function MoMIndicatorsCard() {
   const [sub, setSub] = useState<"cpiwpi" | "autogst" | "pmi">("cpiwpi");
-  // Default: trailing 24 months — start from year 24 months ago
-  const today = new Date();
-  const trailing24Start = new Date(
-    today.getFullYear(),
-    today.getMonth() - 23,
-    1,
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [anchorDateStr, setAnchorDateStr] = useState(todayStr);
+  const [windowOffset, setWindowOffset] = useState(0);
+  const touchStartX = useRef(0);
+
+  const anchorDate = useMemo(() => new Date(anchorDateStr), [anchorDateStr]);
+  const endDate = useMemo(
+    () => addMonthsToDate(anchorDate, windowOffset),
+    [anchorDate, windowOffset],
   );
-  const [selectedYear, setSelectedYear] = useState(
-    trailing24Start.getFullYear(),
-  );
+  const startDate = useMemo(() => addMonthsToDate(endDate, -59), [endDate]);
+
+  const rangeLabel = `${formatMonthLabel(startDate)} – ${formatMonthLabel(endDate)}`;
+  const marketMoMStart = getMarketMonthStart(endDate);
+  const marketMoMEnd = getMarketMonthEnd(endDate);
+  const marketRangeLabel = `${formatDateShort(marketMoMStart)} – ${formatDateShort(marketMoMEnd)}`;
 
   const subTabs = [
     { id: "cpiwpi" as const, label: "CPI & WPI", ocid: "macro.mom.cpiwpi.tab" },
@@ -3569,42 +3860,58 @@ function MoMIndicatorsCard() {
   ];
 
   const cpiWpiData = useMemo(
-    () => MACRO_CPI_WPI_FULL.filter((d) => d.year >= selectedYear),
-    [selectedYear],
+    () => getDailyWindow(MACRO_CPI_WPI_FULL, endDate, 59),
+    [endDate],
   );
   const autoGstData = useMemo(
-    () => MACRO_AUTO_GST_FULL.filter((d) => d.year >= selectedYear),
-    [selectedYear],
+    () => getDailyWindow(MACRO_AUTO_GST_FULL, endDate, 59),
+    [endDate],
   );
   const pmiData = useMemo(
-    () => MACRO_PMI_FULL.filter((d) => d.year >= selectedYear),
-    [selectedYear],
+    () => getDailyWindow(MACRO_PMI_FULL, endDate, 59),
+    [endDate],
   );
 
   const xInterval = (len: number) =>
     len <= 12 ? 0 : len <= 24 ? 2 : len <= 48 ? 5 : 11;
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (dx > 50) setWindowOffset((o) => o - 1);
+    if (dx < -50) setWindowOffset((o) => Math.min(0, o + 1));
+  };
+
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <h2 className="text-sm font-bold text-slate-100">
-          Month-on-Month (MoM) Indicators
-        </h2>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">From Year:</span>
-          <select
-            data-ocid="macro.mom.year.select"
-            className={selectCls}
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-          >
-            {YEAR_OPTIONS.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
+        <div>
+          <h2 className="text-sm font-bold text-slate-100">
+            Month-on-Month (MoM) Indicators
+          </h2>
+          <div className="text-xs text-slate-500 mt-0.5">
+            Current Market Month:{" "}
+            <span className="text-blue-400 font-medium">
+              {marketRangeLabel}
+            </span>
+          </div>
         </div>
+        <WindowNav
+          label={rangeLabel}
+          onPrev={() => setWindowOffset((o) => o - 1)}
+          onNext={() => setWindowOffset((o) => Math.min(0, o + 1))}
+          disableNext={windowOffset >= 0}
+          dateValue={anchorDateStr}
+          onDateChange={(v) => {
+            setAnchorDateStr(v);
+            setWindowOffset(0);
+          }}
+          dateOcid="macro.mom.date.input"
+          prevOcid="macro.mom.prev.button"
+          nextOcid="macro.mom.next.button"
+        />
       </div>
       <div className="flex flex-wrap gap-1.5 mb-4">
         {subTabs.map((t) => (
@@ -3619,190 +3926,214 @@ function MoMIndicatorsCard() {
           </button>
         ))}
       </div>
-      {sub === "cpiwpi" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            CPI (Blue) & WPI (Green) — MoM % — From {selectedYear}
-          </div>
-          {cpiWpiData.length === 0 ? (
-            <NoDataMsg />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart
-                data={cpiWpiData}
-                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  interval={xInterval(cpiWpiData.length)}
-                />
-                <YAxis
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  domain={["auto", "auto"]}
-                  width={34}
-                />
-                <Tooltip
-                  {...ttStyle}
-                  formatter={(v: number, n: string) => [`${v}%`, n]}
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <ReferenceLine
-                  y={4}
-                  stroke="#475569"
-                  strokeDasharray="4 4"
-                  label={{ value: "RBI Target", fill: "#64748b", fontSize: 9 }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="cpi"
-                  name="CPI"
-                  stroke="#3b82f6"
-                  dot={false}
-                  strokeWidth={2}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="wpi"
-                  name="WPI"
-                  stroke="#22c55e"
-                  dot={false}
-                  strokeWidth={2}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
-      {sub === "autogst" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            Auto Sales (Lakhs, bars) & GST Collections (₹ L Cr, line) — MoM —
-            From {selectedYear}
-          </div>
-          {autoGstData.length === 0 ? (
-            <NoDataMsg />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart
-                data={autoGstData}
-                margin={{ top: 4, right: 32, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#1e293b"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  interval={xInterval(autoGstData.length)}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  width={34}
-                  domain={["auto", "auto"]}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  width={40}
-                  domain={["auto", "auto"]}
-                />
-                <Tooltip {...ttStyle} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar
-                  yAxisId="left"
-                  dataKey="autoSales"
-                  name="Auto Sales (L)"
-                  fill="#3b82f6"
-                  radius={[2, 2, 0, 0]}
-                  opacity={0.8}
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="gst"
-                  name="GST (₹LCr)"
-                  stroke="#f97316"
-                  dot={false}
-                  strokeWidth={2}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
-      {sub === "pmi" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            India Manufacturing PMI (Blue) & Services PMI (Green) — MoM — From{" "}
-            {selectedYear}
-          </div>
-          {pmiData.length === 0 ? (
-            <NoDataMsg />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart
-                data={pmiData}
-                margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  interval={xInterval(pmiData.length)}
-                />
-                <YAxis
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  domain={[45, 65]}
-                  width={34}
-                />
-                <Tooltip {...ttStyle} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <ReferenceLine
-                  y={50}
-                  stroke="#ef4444"
-                  strokeDasharray="4 4"
-                  label={{
-                    value: "Expansion/Contraction",
-                    fill: "#64748b",
-                    fontSize: 9,
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="mfg"
-                  name="Mfg PMI"
-                  stroke="#3b82f6"
-                  dot={false}
-                  strokeWidth={2}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="services"
-                  name="Services PMI"
-                  stroke="#22c55e"
-                  dot={false}
-                  strokeWidth={2}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
+      <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {sub === "cpiwpi" && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              CPI (Blue) & WPI (Green) — MoM % — {rangeLabel}
+            </div>
+            {cpiWpiData.length === 0 ? (
+              <NoDataMsg />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart
+                  data={cpiWpiData}
+                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    interval={xInterval(cpiWpiData.length)}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    domain={["auto", "auto"]}
+                    width={34}
+                  />
+                  <Tooltip
+                    {...ttStyle}
+                    formatter={(v: number, n: string) => [`${v}%`, n]}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <ReferenceLine
+                    y={4}
+                    stroke="#475569"
+                    strokeDasharray="4 4"
+                    label={{
+                      value: "RBI Target",
+                      fill: "#64748b",
+                      fontSize: 9,
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="cpi"
+                    name="CPI"
+                    stroke="#3b82f6"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="wpi"
+                    name="WPI"
+                    stroke="#22c55e"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </>
+        )}
+        {sub === "autogst" && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              Auto Sales (Lakhs, bars) & GST Collections (₹ L Cr, line) — MoM —{" "}
+              {rangeLabel}
+            </div>
+            {autoGstData.length === 0 ? (
+              <NoDataMsg />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <ComposedChart
+                  data={autoGstData}
+                  margin={{ top: 4, right: 32, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#1e293b"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    interval={xInterval(autoGstData.length)}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    width={34}
+                    domain={["auto", "auto"]}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    width={40}
+                    domain={["auto", "auto"]}
+                  />
+                  <Tooltip {...ttStyle} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar
+                    yAxisId="left"
+                    dataKey="autoSales"
+                    name="Auto Sales (L)"
+                    fill="#3b82f6"
+                    radius={[2, 2, 0, 0]}
+                    opacity={0.8}
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="gst"
+                    name="GST (₹LCr)"
+                    stroke="#f97316"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
+          </>
+        )}
+        {sub === "pmi" && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              India Manufacturing PMI (Blue) & Services PMI (Green) — MoM —{" "}
+              {rangeLabel}
+            </div>
+            {pmiData.length === 0 ? (
+              <NoDataMsg />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart
+                  data={pmiData}
+                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    interval={xInterval(pmiData.length)}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    domain={[45, 65]}
+                    width={34}
+                  />
+                  <Tooltip {...ttStyle} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <ReferenceLine
+                    y={50}
+                    stroke="#ef4444"
+                    strokeDasharray="4 4"
+                    label={{
+                      value: "Expansion/Contraction",
+                      fill: "#64748b",
+                      fontSize: 9,
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="mfg"
+                    name="Mfg PMI"
+                    stroke="#3b82f6"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="services"
+                    name="Services PMI"
+                    stroke="#22c55e"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </>
+        )}
+      </div>
     </Card>
   );
 }
 
+// ─── QoQIndicatorsCard ────────────────────────────────────────────────────────
+
 function QoQIndicatorsCard() {
   const [sub, setSub] = useState<"gdpcad" | "rates" | "fxreserve">("gdpcad");
-  // Default: trailing 20 quarters ≈ 5 years back
-  const today = new Date();
-  const [selectedYear, setSelectedYear] = useState(today.getFullYear() - 5);
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [anchorDateStr, setAnchorDateStr] = useState(todayStr);
+  const [windowOffset, setWindowOffset] = useState(0); // each unit = 1 quarter (3 months)
+  const touchStartX = useRef(0);
+
+  const anchorDate = useMemo(() => new Date(anchorDateStr), [anchorDateStr]);
+  const endDate = useMemo(
+    () => addMonthsToDate(anchorDate, windowOffset * 3),
+    [anchorDate, windowOffset],
+  );
+  // Start = 40 quarters back = 120 months back
+  const startDate = useMemo(() => addMonthsToDate(endDate, -120), [endDate]);
+
+  const startQtrLabel = formatQtrLabel(startDate);
+  const endQtrLabel = formatQtrLabel(endDate);
+  const rangeLabel = `${startQtrLabel} – ${endQtrLabel}`;
+  const marketQoQStart = getMarketMonthStart(endDate);
+  const marketQoQEnd = getMarketMonthEnd(endDate);
+  const marketRangeLabel = `${formatDateShort(marketQoQStart)} – ${formatDateShort(marketQoQEnd)}`;
 
   const subTabs = [
     { id: "gdpcad" as const, label: "GDP & CAD", ocid: "macro.qoq.gdpcad.tab" },
@@ -3819,42 +4150,58 @@ function QoQIndicatorsCard() {
   ];
 
   const gdpCadData = useMemo(
-    () => MACRO_GDP_CAD_FULL.filter((d) => d.calStartYear >= selectedYear),
-    [selectedYear],
+    () => getQtrWindow(MACRO_GDP_CAD_FULL, endDate, 40),
+    [endDate],
   );
   const ratesData = useMemo(
-    () => MACRO_RATES_FULL.filter((d) => d.calStartYear >= selectedYear),
-    [selectedYear],
+    () => getQtrWindow(MACRO_RATES_FULL, endDate, 40),
+    [endDate],
   );
   const fxAndRatesData = useMemo(
-    () => MACRO_FX_AND_RATES_FULL.filter((d) => d.calStartYear >= selectedYear),
-    [selectedYear],
+    () => getQtrWindow(MACRO_FX_AND_RATES_FULL, endDate, 40),
+    [endDate],
   );
 
   const xInterval = (len: number) =>
     len <= 8 ? 0 : len <= 16 ? 1 : len <= 32 ? 3 : 7;
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (dx > 50) setWindowOffset((o) => o - 1);
+    if (dx < -50) setWindowOffset((o) => Math.min(0, o + 1));
+  };
+
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <h2 className="text-sm font-bold text-slate-100">
-          Quarter-on-Quarter (QoQ) Indicators
-        </h2>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">From Year:</span>
-          <select
-            data-ocid="macro.qoq.year.select"
-            className={selectCls}
-            value={selectedYear}
-            onChange={(e) => setSelectedYear(Number(e.target.value))}
-          >
-            {YEAR_OPTIONS.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
+        <div>
+          <h2 className="text-sm font-bold text-slate-100">
+            Quarter-on-Quarter (QoQ) Indicators
+          </h2>
+          <div className="text-xs text-slate-500 mt-0.5">
+            Current Market Month:{" "}
+            <span className="text-blue-400 font-medium">
+              {marketRangeLabel}
+            </span>
+          </div>
         </div>
+        <WindowNav
+          label={rangeLabel}
+          onPrev={() => setWindowOffset((o) => o - 1)}
+          onNext={() => setWindowOffset((o) => Math.min(0, o + 1))}
+          disableNext={windowOffset >= 0}
+          dateValue={anchorDateStr}
+          onDateChange={(v) => {
+            setAnchorDateStr(v);
+            setWindowOffset(0);
+          }}
+          dateOcid="macro.qoq.date.input"
+          prevOcid="macro.qoq.prev.button"
+          nextOcid="macro.qoq.next.button"
+        />
       </div>
       <div className="flex flex-wrap gap-1.5 mb-4">
         {subTabs.map((t) => (
@@ -3869,193 +4216,195 @@ function QoQIndicatorsCard() {
           </button>
         ))}
       </div>
-      {sub === "gdpcad" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            GDP Growth % (bars, left) & CAD as % of GDP (line, right) — QoQ —
-            From {selectedYear}
-          </div>
-          {gdpCadData.length === 0 ? (
-            <NoDataMsg />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart
-                data={gdpCadData}
-                margin={{ top: 4, right: 36, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#1e293b"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  interval={xInterval(gdpCadData.length)}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  domain={["auto", "auto"]}
-                  width={34}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  width={34}
-                />
-                <Tooltip {...ttStyle} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <ReferenceLine yAxisId="left" y={0} stroke="#475569" />
-                <Bar
-                  yAxisId="left"
-                  dataKey="gdp"
-                  name="GDP Growth %"
-                  radius={[3, 3, 0, 0]}
+      <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        {sub === "gdpcad" && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              GDP Growth % (bars, left) & CAD as % of GDP (line, right) — QoQ —{" "}
+              {rangeLabel}
+            </div>
+            {gdpCadData.length === 0 ? (
+              <NoDataMsg />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <ComposedChart
+                  data={gdpCadData}
+                  margin={{ top: 4, right: 36, bottom: 0, left: 0 }}
                 >
-                  {gdpCadData.map((d) => (
-                    <Cell
-                      key={d.date}
-                      fill={d.gdp >= 0 ? "#3b82f6" : "#ef4444"}
-                    />
-                  ))}
-                </Bar>
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="cad"
-                  name="CAD % GDP"
-                  stroke="#f97316"
-                  dot={false}
-                  strokeWidth={2}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
-      {sub === "rates" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            Repo Rate % (Blue, left) & FX Reserve USD Bn (Orange, right) — QoQ —
-            From {selectedYear}
-          </div>
-          {ratesData.length === 0 ? (
-            <NoDataMsg />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart
-                data={ratesData}
-                margin={{ top: 4, right: 40, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  interval={xInterval(ratesData.length)}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  domain={["auto", "auto"]}
-                  width={34}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  width={45}
-                />
-                <Tooltip {...ttStyle} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="repoRate"
-                  name="Repo Rate %"
-                  stroke="#3b82f6"
-                  dot={{ fill: "#3b82f6", r: 4 }}
-                  strokeWidth={2}
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="fxReserve"
-                  name="FX Reserve ($B)"
-                  stroke="#f97316"
-                  dot={false}
-                  strokeWidth={2}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
-      {sub === "fxreserve" && (
-        <>
-          <div className="text-xs text-slate-500 mb-2">
-            FX Reserve USD Bn (Purple, left) &amp; Repo Rate % (Blue step-line,
-            right) — QoQ — From {selectedYear}
-          </div>
-          {fxAndRatesData.length === 0 ? (
-            <NoDataMsg />
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart
-                data={fxAndRatesData}
-                margin={{ top: 4, right: 44, bottom: 0, left: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  interval={xInterval(fxAndRatesData.length)}
-                />
-                <YAxis
-                  yAxisId="left"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  domain={["auto", "auto"]}
-                  width={46}
-                  tickFormatter={(v: number) => `$${v}B`}
-                />
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
-                  tick={{ fontSize: 9, fill: "#64748b" }}
-                  width={34}
-                  tickFormatter={(v: number) => `${v}%`}
-                />
-                <Tooltip
-                  {...ttStyle}
-                  formatter={(v: number, n: string) =>
-                    n === "FX Reserve (USD Bn)" ? [`$${v}B`, n] : [`${v}%`, n]
-                  }
-                />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="fxReserve"
-                  name="FX Reserve (USD Bn)"
-                  stroke="#a855f7"
-                  dot={false}
-                  strokeWidth={2}
-                />
-                <Line
-                  yAxisId="right"
-                  type="stepAfter"
-                  dataKey="repoRate"
-                  name="Repo Rate %"
-                  stroke="#3b82f6"
-                  dot={{ fill: "#3b82f6", r: 4 }}
-                  strokeWidth={2}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </>
-      )}
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#1e293b"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    interval={xInterval(gdpCadData.length)}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    domain={["auto", "auto"]}
+                    width={34}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    width={34}
+                  />
+                  <Tooltip {...ttStyle} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <ReferenceLine yAxisId="left" y={0} stroke="#475569" />
+                  <Bar
+                    yAxisId="left"
+                    dataKey="gdp"
+                    name="GDP Growth %"
+                    radius={[3, 3, 0, 0]}
+                  >
+                    {gdpCadData.map((d) => (
+                      <Cell
+                        key={d.date}
+                        fill={d.gdp >= 0 ? "#3b82f6" : "#ef4444"}
+                      />
+                    ))}
+                  </Bar>
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="cad"
+                    name="CAD % GDP"
+                    stroke="#f97316"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
+          </>
+        )}
+        {sub === "rates" && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              Repo Rate % (Blue, left) & FX Reserve USD Bn (Orange, right) — QoQ
+              — {rangeLabel}
+            </div>
+            {ratesData.length === 0 ? (
+              <NoDataMsg />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <ComposedChart
+                  data={ratesData}
+                  margin={{ top: 4, right: 40, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    interval={xInterval(ratesData.length)}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    domain={["auto", "auto"]}
+                    width={34}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    width={45}
+                  />
+                  <Tooltip {...ttStyle} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="repoRate"
+                    name="Repo Rate %"
+                    stroke="#3b82f6"
+                    dot={{ fill: "#3b82f6", r: 4 }}
+                    strokeWidth={2}
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="fxReserve"
+                    name="FX Reserve ($B)"
+                    stroke="#f97316"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
+          </>
+        )}
+        {sub === "fxreserve" && (
+          <>
+            <div className="text-xs text-slate-500 mb-2">
+              FX Reserve USD Bn (Purple, left) &amp; Repo Rate % (Blue
+              step-line, right) — QoQ — {rangeLabel}
+            </div>
+            {fxAndRatesData.length === 0 ? (
+              <NoDataMsg />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <ComposedChart
+                  data={fxAndRatesData}
+                  margin={{ top: 4, right: 44, bottom: 0, left: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    interval={xInterval(fxAndRatesData.length)}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    domain={["auto", "auto"]}
+                    width={46}
+                    tickFormatter={(v: number) => `$${v}B`}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fontSize: 9, fill: "#64748b" }}
+                    width={34}
+                    tickFormatter={(v: number) => `${v}%`}
+                  />
+                  <Tooltip
+                    {...ttStyle}
+                    formatter={(v: number, n: string) =>
+                      n === "FX Reserve (USD Bn)" ? [`$${v}B`, n] : [`${v}%`, n]
+                    }
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="fxReserve"
+                    name="FX Reserve (USD Bn)"
+                    stroke="#a855f7"
+                    dot={false}
+                    strokeWidth={2}
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="stepAfter"
+                    dataKey="repoRate"
+                    name="Repo Rate %"
+                    stroke="#3b82f6"
+                    dot={{ fill: "#3b82f6", r: 4 }}
+                    strokeWidth={2}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
+          </>
+        )}
+      </div>
     </Card>
   );
 }
