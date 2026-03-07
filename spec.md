@@ -2,50 +2,53 @@
 
 ## Current State
 
-The dashboard has 6 tabs. In Tab 2 (Index & Index Options OI) the Nifty50 and BankNifty price panels are powered by `NIFTY_DATA` and `BANKNIFTY_DATA`, each generated via `genPriceSeries(300, ...)` — only ~300 trading days of mock data going back roughly 1 year from March 2026.
+The app has 7 tabs. The "Results & Analytics" tab (between Stocks & Stocks Options OI and Macro Indicators) contains:
+- A stock selector for Nifty Total Market stocks
+- **Analytics Matrix Panel**: period inputs (# Quarters or # Years), Notes section, multi-select standard/custom metrics dropdown, metrics table with Save/Modify per row. Standard metric names are hardcoded as "(5Y)" regardless of the actual period selected. Custom metrics support Macro Indicator variables (MacroCPI, FIIFlow, NiftyClose, etc.) but no Index OI/Stock OI data points.
+- **Visualization Panel**: chart type toggle (Bar/Line/Composed), multi-select conditions dropdown showing standard series + saved custom metrics. No period selector. Uses fixed last 20 quarters. No Index or Stock OI data points, no Macro Indicator data points.
 
-In Tab 3 (Stocks & Stocks Options OI) each stock's OHLC+Volume data is generated on demand via `getStockData(sym)` which calls `genPriceSeries(200, ...)` — only ~200 trading days per stock.
-
-Both generators use `genDates()` which counts backwards from a hardcoded `toDate = new Date("2026-03-03")`, producing short histories.
-
-There is no date-range filtering on the price panels — the charts simply show the last N candles based on zoom level.
+Data available in scope:
+- `NIFTY_DATA`: OHLC[] — Nifty50 daily price from Jan 2005
+- `BANKNIFTY_DATA`: OHLC[] — BankNifty daily price from Jan 2005
+- `getStockData(sym)`: OHLCWithVolume[] — Stock daily OHLC+Volume
+- `NIFTY_PCR_OI_DATA.CM/NM/CW/NW`: ExtendedPCRBarData[] — Nifty OI with date/year/month
+- `BANKNIFTY_PCR_OI_DATA.CM/NM`: ExtendedPCRBarData[] — BankNifty OI
+- Stock PCR OI via `stockPCROIFullCache[key]`
+- `MACRO_CPI_WPI_FULL`, `MACRO_FII_FULL`, `MACRO_USDINT_FULL`, `MACRO_CRUDE_FULL`, `MACRO_GSEC_FULL`, `MACRO_GDP_CAD_FULL`, `MACRO_RATES_FULL`, `MACRO_FXRESERVE_FULL` — all macro time-series
 
 ## Requested Changes (Diff)
 
 ### Add
-- A seeded deterministic PRNG utility (`seededRng(seed)`) so each symbol always produces the same price series
-- A `PRICE_START_DATE` constant set to `2005-01-03` (first trading day of Jan 2005)
-- A `STOCK_IPO_YEAR` map for recently-listed stocks (IPO after 2010) so their data starts from a realistic date
-- Extended `genPriceSeries` with a `fromDate` / `toDate` range parameter that uses the seeded RNG to generate full history from the given start date to today
-- Nifty50 historical base: start at ~2050 (actual approximate level in Jan 2005), trending to ~22800 today — use a random-walk with upward drift
-- BankNifty historical base: start at ~7200 (approximate Jan 2005 level), trending to ~48500 today
+- **Analytics Matrix Panel**: Index & Stock OI data point variables available in formulas/display. New variables: `NiftyOI_PE`, `NiftyOI_CE`, `NiftyPCR`, `BankNiftyOI_PE`, `BankNiftyOI_CE`, `BankNiftyPCR`, `StockOI_PE`, `StockOI_CE`, `StockPCR`, `StockClose`, `StockVolume`. Data aggregated to match the selected period (Q or Y) by averaging or summing daily/monthly data into quarterly or annual buckets.
+- **Analytics Matrix Panel**: A new "Data Sources" expandable section showing available Index & Stock OI variables (with current values) alongside existing Macro variables in the formula reference panel.
+- **Visualization Panel**: Period selector (# Quarters or # Years) — mirroring the Analytics Matrix Panel controls — that governs how many periods are displayed on the chart.
+- **Visualization Panel**: Add macro indicator data points to the conditions dropdown (MacroCPI, MacroWPI, FIIFlow, MacroDII, MacroUSDINR, MacroCrudeWTI, MacroCrudeBrent, Macro3YGsec, Macro5YGsec, Macro10YGsec, MacroGDP, MacroRepoRate, MacroFXReserve) as selectable series with auto-aggregation to the selected period.
+- **Visualization Panel**: Add Index OI and Stock OI data points as selectable series (NiftyPCR, NiftyOI_Net, BankNiftyPCR, BankNiftyOI_Net, StockClose, StockVolume, StockPCR).
+- **Visualization Panel**: Auto-adjust logic that converts daily/monthly/quarterly OI and macro data into the selected period granularity (quarterly or annual buckets, averaging or summing as appropriate).
 
 ### Modify
-- `NIFTY_DATA`: change from `genPriceSeries(300, 22800, 120)` to a full history generator seeded deterministically from Jan 1, 2005 to today (~5400 trading days)
-- `BANKNIFTY_DATA`: change from `genPriceSeries(300, 48500, 380)` to a full history generator seeded from Jan 1, 2005
-- `getStockData(sym)`: change from 200-day generator to a full history generator starting from Jan 1, 2005 (or stock's IPO date if later), using a per-symbol deterministic seed, including realistic OHLC+Volume data
-- `genDates()`: add overload / modify to accept `fromDate` and `toDate` parameters so callers can specify date ranges
-- `genPriceSeries()`: extend to accept `startDate` and an optional seed so it produces deterministic reproducible series with appropriate upward drift for long-term Indian market indices
+- **Analytics Matrix Panel — Metric Names**: The standard metric names currently hardcode "(5Y)". Update `computeBuiltinMetrics` to use dynamic period suffix based on the selected period — e.g. "(8Q)" when 8 quarters is selected, or "(3Y)" when 3 years is selected. The returned metric name should reflect the actual period.
+- **Analytics Matrix Panel — `evalCustomMetric`**: Extend the variables injected into formula eval to include the new Index & Stock OI variables (computed from the selected period window).
+- **Visualization Panel — chartData**: Instead of slicing to last 20 quarters, slice to `periodQuarters` aligned with the selected period in the panel's own period controls.
+- **Visualization Panel — multi-source series rendering**: Support a right Y-axis for macro/OI series that use different units, and add them to the existing allSeries/renderSeries pipeline.
 
 ### Remove
-- Nothing removed — existing API surface (OHLC interface, `getStockData`, `NIFTY_DATA`, `BANKNIFTY_DATA`) remains the same, only the underlying data depth changes
+- Nothing removed.
 
 ## Implementation Plan
 
-1. **Add seeded PRNG**: Implement `seededRng(seed: number)` returning a `() => number` function using a simple mulberry32 algorithm so each symbol gets reproducible data.
+1. **`computeBuiltinMetrics` update**: Change metric name strings from hardcoded "(5Y)" to use a dynamic label built from `periodQ` (e.g. `${years}Y` when divisible, or `${periodQ}Q`).
 
-2. **Add `genDatesRange(fromDate, toDate)`**: Generate all weekday dates (Mon–Fri) between two dates, skipping Sat/Sun.
+2. **Index/Stock OI aggregation helper**: Create a helper `aggregateOIByPeriod(oiData: ExtendedPCRBarData[], periods: {year:number,month:number}[], mode:'quarterly'|'annual')` that groups daily OI rows by quarter or year, averaging PCR and summing PE/CE OI per bucket, returning an array aligned to QuarterlyResult periods.
 
-3. **Add `genPriceSeriesRange(fromDate, toDate, startPrice, endPrice, volatilityPct, seed)`**: Walk from `startPrice` to approximately `endPrice` over the date range, using a mean-reverting drift so it trends realistically. Use the seeded PRNG for reproducibility. Each candle: open near prev close, high = max(open,close) * (1 + small noise), low = min(open,close) * (1 - small noise).
+3. **`evalCustomMetric` extension**: Add new variables `NiftyOI_PE`, `NiftyOI_CE`, `NiftyPCR`, `BankNiftyOI_PE`, `BankNiftyOI_CE`, `BankNiftyPCR`, `StockOI_PE` (from selected stock), `StockOI_CE`, `StockPCR`, `StockClose`, `StockVolume` — computed as period averages using the selected `periodQ` window. Pass `sym` and `periodQ` into the evaluator.
 
-4. **Replace `NIFTY_DATA`**: Call `genPriceSeriesRange(new Date("2005-01-03"), new Date("2026-03-03"), 2050, 22800, 0.012, 42)` — ~5400 trading days.
+4. **AnalyticsMatrixPanel — metric name display**: Update the metrics table "Metric" column to show the dynamic period-suffixed name from `computeBuiltinMetrics`. Update formula variable reference panel to include Index/Stock OI variable names with current values.
 
-5. **Replace `BANKNIFTY_DATA`**: Call `genPriceSeriesRange(new Date("2005-01-03"), new Date("2026-03-03"), 7200, 48500, 0.018, 99)` — ~5400 trading days.
+5. **VisualizationPanel — period controls**: Add `numQuarters`/`numYears` state + `periodQuarters` derived value, identical to AnalyticsMatrixPanel controls. Replace the hardcoded `slice(0, 20)` with `slice(0, periodQuarters)`.
 
-6. **Add `STOCK_IPO_YEAR`**: Map of recently-listed stocks (those that went public after 2010) to their approximate listing year. Stocks not in the map default to 2005.
+6. **VisualizationPanel — macro series**: Add macro indicator entries to the conditions dropdown under a new "Macro Indicators" section. When checked, add them to `customConditionSeries` using time-series values aligned to chart quarters (averaging Macro data by quarter). Use a separate right-axis for macro series that have small values (PCR, rates, margins) vs large (FII flows, OI).
 
-7. **Replace `getStockData(sym)`**: Use the stock's start date (from `STOCK_IPO_YEAR` or 2005-01-03), generate full history to today using a per-symbol seed (hash of symbol string). Base prices come from `STOCK_BASE_PRICES` or a reasonable default. Includes volume data (seeded random in realistic range per stock).
+7. **VisualizationPanel — Index & Stock OI series**: Add "Index & Stock OI" section to the conditions dropdown. When checked, aggregate OI data by the selected periods and overlay as additional series with right-axis (PCR values) or left-axis (OI volumes).
 
-8. **Performance**: Since all data is generated once at module load time and cached in `stockDataCache`, the lazy-on-first-access pattern already handles performance. Index data (`NIFTY_DATA`, `BANKNIFTY_DATA`) is computed once at startup — ~5400 entries per index is fast.
-
-9. **No UI changes**: Only the data layer changes. All chart components, zoom, timeframe selectors, and date-range logic remain unchanged.
+8. **Auto-adjust logic**: Build `getQuarterlyMacroValue(macroArray, quarterDate, field)` helper that finds the macro entry closest to a given quarter date. Build `getQuarterlyOIValue(oiData, quarter, field)` that averages daily OI rows within a quarter window. Use these in chart data generation for the new series.

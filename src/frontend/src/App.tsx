@@ -974,104 +974,226 @@ const STOCKS = [
   { sym: "JINDWORLD", name: "JINDWORLD" },
 ];
 
-// Stocks that have options (large-caps)
-const STOCKS_WITH_OPTIONS = new Set([
-  "RELIANCE",
-  "TCS",
-  "HDFCBANK",
-  "BHARTIARTL",
-  "ICICIBANK",
-  "INFY",
-  "SBIN",
-  "ITC",
-  "HINDUNILVR",
-  "LT",
-  "BAJFINANCE",
-  "HCLTECH",
-  "MARUTI",
-  "SUNPHARMA",
-  "ADANIENT",
-  "KOTAKBANK",
-  "TITAN",
-  "AXISBANK",
-  "ASIANPAINT",
-  "WIPRO",
-  "ULTRACEMCO",
-  "NESTLEIND",
-  "ONGC",
-  "NTPC",
-  "POWERGRID",
-  "MM",
-  "BAJAJFINSV",
-  "JSWSTEEL",
-  "TATAMOTORS",
-  "TATASTEEL",
-  "ADANIPORTS",
-  "COALINDIA",
-  "TECHM",
-  "HINDALCO",
-  "GRASIM",
-  "DRREDDY",
-  "CIPLA",
-  "INDUSINDBK",
-  "EICHERMOT",
-  "BRITANNIA",
-  "APOLLOHOSP",
-  "TATACONSUM",
-  "BPCL",
-  "DIVISLAB",
-  "HEROMOTOCO",
-  "SHREECEM",
-  "BAJAJ-AUTO",
-  "SBILIFE",
-  "HDFCLIFE",
-  "GAIL",
-  "PIDILITIND",
-  "GODREJCP",
-  "DABUR",
-  "AMBUJACEM",
-  "ACC",
-  "COLPAL",
-  "MARICO",
-  "HAVELLS",
-  "IRCTC",
-  "RECLTD",
-  "PFC",
-  "CHOLAFIN",
-  "MUTHOOTFIN",
-  "SHRIRAMFIN",
-  "PNB",
-  "BANKBARODA",
-  "CANBK",
-  "IDFCFIRSTB",
-  "FEDERALBNK",
-  "ZOMATO",
-  "NAUKRI",
-  "MPHASIS",
-  "LTIM",
-  "PERSISTENT",
-  "COFORGE",
-  "KPITTECH",
-  "TATAPOWER",
-  "ADANIGREEN",
-  "ABB",
-  "SIEMENS",
-  "BEL",
-  "HAL",
-  "APOLLOTYRE",
-  "MRF",
-  "TVSMOTOR",
-  "ASHOKLEY",
-  "DLF",
-  "GODREJPROP",
-  "PRESTIGE",
-  "SUNTV",
-  "TRENT",
-  "LUPIN",
-  "AUROPHARMA",
-  "TORNTPHARM",
-  "BIOCON",
-]);
+// ─── LOT SIZES ──
+// Index lot sizes
+const NIFTY_LOT_SIZE = 65;
+const BANKNIFTY_LOT_SIZE = 30;
+const _FINNIFTY_LOT_SIZE = 60;
+const _MIDCPNIFTY_LOT_SIZE = 120;
+const _NIFTYNXT50_LOT_SIZE = 25;
+
+// Stock lot sizes keyed by NSE symbol
+const LOT_SIZES: Record<string, number> = {
+  "360ONE": 500,
+  ABB: 125,
+  ABCAPITAL: 3100,
+  ADANIENSOL: 675,
+  ADANIENT: 309,
+  ADANIGREEN: 600,
+  ADANIPORTS: 475,
+  ALKEM: 125,
+  AMBER: 100,
+  AMBUJACEM: 1050,
+  ANGELONE: 2500,
+  APLAPOLLO: 350,
+  APOLLOHOSP: 125,
+  ASHOKLEY: 5000,
+  ASIANPAINT: 250,
+  ASTRAL: 425,
+  AUBANK: 1000,
+  AUROPHARMA: 550,
+  AXISBANK: 625,
+  "BAJAJ-AUTO": 75,
+  BAJAJFINSV: 250,
+  BAJAJHLDNG: 50,
+  BAJFINANCE: 750,
+  BANDHANBNK: 3600,
+  BANKBARODA: 2925,
+  BANKINDIA: 5200,
+  BDL: 350,
+  BEL: 1425,
+  BHARATFORG: 500,
+  BHARTIARTL: 475,
+  BHEL: 2625,
+  BIOCON: 2500,
+  BLUESTARCO: 325,
+  BOSCHLTD: 25,
+  BPCL: 1975,
+  BRITANNIA: 125,
+  BSE: 375,
+  CAMS: 750,
+  CANBK: 6750,
+  CDSL: 475,
+  CGPOWER: 850,
+  CHOLAFIN: 625,
+  CIPLA: 375,
+  COALINDIA: 1350,
+  COFORGE: 375,
+  COLPAL: 225,
+  CONCOR: 1250,
+  CROMPTON: 1800,
+  CUMMINSIND: 200,
+  DABUR: 1250,
+  DALBHARAT: 325,
+  DELHIVERY: 2075,
+  DIVISLAB: 100,
+  DIXON: 50,
+  DLF: 825,
+  DMART: 150,
+  DRREDDY: 625,
+  EICHERMOT: 100,
+  ETERNAL: 2425,
+  EXIDEIND: 1800,
+  FEDERALBNK: 5000,
+  FORTIS: 775,
+  GAIL: 3150,
+  GLENMARK: 375,
+  GMRAIRPORT: 6975,
+  GODREJCP: 500,
+  GODREJPROP: 275,
+  GRASIM: 250,
+  HAL: 150,
+  HAVELLS: 500,
+  HCLTECH: 350,
+  HDFCAMC: 300,
+  HDFCBANK: 550,
+  HDFCLIFE: 1100,
+  HEROMOTOCO: 150,
+  HINDALCO: 700,
+  HINDPETRO: 2025,
+  HINDUNILVR: 300,
+  HINDZINC: 1225,
+  HUDCO: 2775,
+  ICICIBANK: 700,
+  ICICIGI: 325,
+  ICICIPRULI: 925,
+  IDEA: 71475,
+  IDFCFIRSTB: 9275,
+  IEX: 3750,
+  INDHOTEL: 1000,
+  INDIANB: 1000,
+  INDIGO: 150,
+  INDUSINDBK: 700,
+  INDUSTOWER: 1700,
+  INFY: 400,
+  INOXWIND: 3575,
+  IOC: 4875,
+  IREDA: 3450,
+  IRFC: 4250,
+  ITC: 1600,
+  JINDALSTEL: 625,
+  JIOFIN: 2350,
+  JSWENERGY: 1000,
+  JSWSTEEL: 675,
+  JUBLFOOD: 1250,
+  KALYANKJIL: 1175,
+  KAYNES: 100,
+  KEI: 175,
+  KFINTECH: 500,
+  KOTAKBANK: 2000,
+  KPITTECH: 425,
+  LAURUSLABS: 850,
+  LICHSGFIN: 1000,
+  LICI: 700,
+  LODHA: 450,
+  LT: 175,
+  LTF: 2250,
+  LTM: 150,
+  LUPIN: 425,
+  "M&M": 200,
+  MANAPPURAM: 3000,
+  MANKIND: 225,
+  MARICO: 1200,
+  MARUTI: 50,
+  MAXHEALTH: 525,
+  MAZDOCK: 200,
+  MCX: 625,
+  MFSL: 400,
+  MOTHERSON: 6150,
+  MPHASIS: 275,
+  MUTHOOTFIN: 275,
+  NATIONALUM: 3750,
+  NAUKRI: 375,
+  NBCC: 6500,
+  NESTLEIND: 500,
+  NHPC: 6400,
+  NMDC: 6750,
+  NTPC: 1500,
+  NUVAMA: 500,
+  NYKAA: 3125,
+  OBEROIRLTY: 350,
+  OFSS: 75,
+  OIL: 1400,
+  ONGC: 2250,
+  PAGEIND: 15,
+  PATANJALI: 900,
+  PAYTM: 725,
+  PERSISTENT: 100,
+  PETRONET: 1900,
+  PFC: 1300,
+  PGEL: 950,
+  PHOENIXLTD: 350,
+  PIDILITIND: 500,
+  PIIND: 175,
+  PNB: 8000,
+  PNBHOUSING: 650,
+  POLICYBZR: 350,
+  POLYCAB: 125,
+  POWERGRID: 1900,
+  POWERINDIA: 50,
+  PPLPHARMA: 2625,
+  PREMIERENE: 575,
+  PRESTIGE: 450,
+  RBLBANK: 3175,
+  RECLTD: 1400,
+  RELIANCE: 500,
+  RVNL: 1525,
+  SAIL: 4700,
+  SAMMAANCAP: 4300,
+  SBICARD: 800,
+  SBILIFE: 375,
+  SBIN: 750,
+  SHREECEM: 25,
+  SHRIRAMFIN: 825,
+  SIEMENS: 175,
+  SOLARINDS: 50,
+  SONACOMS: 1225,
+  SRF: 200,
+  SUNPHARMA: 350,
+  SUPREMEIND: 175,
+  SUZLON: 9025,
+  SWIGGY: 1300,
+  SYNGENE: 1000,
+  TATACONSUM: 550,
+  TATAELXSI: 100,
+  TATAPOWER: 1450,
+  TATASTEEL: 5500,
+  TATATECH: 800,
+  TCS: 175,
+  TECHM: 600,
+  TIINDIA: 200,
+  TITAN: 175,
+  TMPV: 800,
+  TORNTPHARM: 250,
+  TORNTPOWER: 425,
+  TRENT: 100,
+  TVSMOTOR: 175,
+  ULTRACEMCO: 50,
+  UNIONBANK: 4425,
+  UNITDSPR: 400,
+  UNOMINDA: 550,
+  UPL: 1355,
+  VBL: 1125,
+  VEDL: 1150,
+  VOLTAS: 375,
+  WAAREEENER: 175,
+  WIPRO: 3000,
+  YESBANK: 31100,
+  ZYDUSLIFE: 900,
+};
+
+// Stocks that have options — derived from the CSV (all symbols except NIFTY/BANKNIFTY)
+const STOCKS_WITH_OPTIONS = new Set(Object.keys(LOT_SIZES));
 
 const STOCK_BASE_PRICES: Record<string, number> = {
   RELIANCE: 2850,
@@ -5359,11 +5481,13 @@ function IndexOIPanel({
   pcrSourceFull,
   expiries,
   ocidPrefix,
+  lotSize,
 }: {
   indexName: string;
   pcrSourceFull: Record<string, ExtendedPCRBarData[]>;
   expiries: string[];
   ocidPrefix: string;
+  lotSize: number;
 }) {
   const initSelected = Object.fromEntries(expiries.map((e, i) => [e, i === 0]));
   const [selected, setSelected] =
@@ -5392,9 +5516,14 @@ function IndexOIPanel({
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h2 className="text-sm font-bold text-slate-100">
-          {indexName} OI Data
-        </h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-bold text-slate-100">
+            {indexName} OI Data
+          </h2>
+          <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-medium">
+            Lot Size: {lotSize.toLocaleString()}
+          </span>
+        </div>
         <ExpirySelector
           expiries={expiries}
           selected={selected}
@@ -5466,6 +5595,7 @@ function TabIndex() {
         pcrSourceFull={NIFTY_PCR_OI_FULL}
         expiries={["CW", "NW", "CM", "NM"]}
         ocidPrefix="index.nifty"
+        lotSize={NIFTY_LOT_SIZE}
       />
       <IndexPricePanel
         indexName="BankNifty"
@@ -5477,6 +5607,7 @@ function TabIndex() {
         pcrSourceFull={BANKNIFTY_PCR_OI_FULL}
         expiries={["CM", "NM"]}
         ocidPrefix="index.banknifty"
+        lotSize={BANKNIFTY_LOT_SIZE}
       />
     </div>
   );
@@ -5742,10 +5873,18 @@ function StockOIPanel({ sym }: { sym: string }) {
       </Card>
     );
   }
+  const lotSize = LOT_SIZES[sym];
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h2 className="text-sm font-bold text-slate-100">{sym} — OI Data</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-bold text-slate-100">{sym} — OI Data</h2>
+          {lotSize !== undefined && (
+            <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-medium">
+              Lot Size: {lotSize.toLocaleString()}
+            </span>
+          )}
+        </div>
         <ExpirySelector
           expiries={["CM", "NM"]}
           selected={selected}
@@ -7505,12 +7644,2991 @@ function TabIndicesSectors() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// TAB 7: STOCK RESULTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Data Types ──────────────────────────────────────────────────────────────
+interface QuarterlyResult {
+  quarter: string; // e.g. "Q1 FY06"
+  quarterDate: Date; // start date of quarter (April 1, July 1, Oct 1, Jan 1)
+  revenue: number; // in Crores INR
+  netProfit: number;
+  ebitda: number;
+  eps: number;
+  revenueGrowthYoY: number | null;
+  netProfitGrowthYoY: number | null;
+  ebitdaMargin: number;
+  netProfitMargin: number;
+}
+
+interface CustomMetric {
+  id: string;
+  name: string;
+  formula: string;
+  note?: string; // plain text note for this custom metric
+  value: number | null;
+  error: string | null;
+  isGlobal?: boolean; // true = stored in global_custom_metrics
+}
+
+// ─── Quarter Generator ────────────────────────────────────────────────────────
+const quarterlyResultsCache: Record<string, QuarterlyResult[]> = {};
+
+function genQuarterlyResults(sym: string): QuarterlyResult[] {
+  if (quarterlyResultsCache[sym]) return quarterlyResultsCache[sym];
+
+  const seed = symSeed(sym);
+  const rng = mulberry32(seed + 77);
+
+  // Determine IPO year for this stock
+  const ipoYear = STOCK_IPO_YEAR[sym] ?? 2005;
+  const startYear = Math.max(ipoYear, 2005);
+
+  // Generate all FY quarters from Q1 FY06 (Apr 2005) through latest completed quarter
+  const now = new Date();
+  const nowYear = now.getFullYear();
+  const nowMonth = now.getMonth(); // 0-indexed
+
+  // FY quarters: Q1=Apr-Jun, Q2=Jul-Sep, Q3=Oct-Dec, Q4=Jan-Mar
+  // Q1 FY06 = April 2005
+  // Generate all quarters up to most recently completed quarter
+  const quarters: QuarterlyResult[] = [];
+
+  // Determine current FY and quarter
+  // A quarter is "completed" if the end month has passed
+  // Q1 end = Jun, Q2 end = Sep, Q3 end = Dec, Q4 end = Mar
+  let currentFY = nowMonth >= 3 ? nowYear + 1 : nowYear; // FY year
+  let currentQ: number;
+  if (nowMonth >= 3 && nowMonth <= 5) currentQ = 1;
+  else if (nowMonth >= 6 && nowMonth <= 8) currentQ = 2;
+  else if (nowMonth >= 9 && nowMonth <= 11) currentQ = 3;
+  else currentQ = 4;
+
+  // Go back one quarter for "completed" quarters
+  let lastCompletedQ = currentQ - 1;
+  let lastCompletedFY = currentFY;
+  if (lastCompletedQ === 0) {
+    lastCompletedQ = 4;
+    lastCompletedFY--;
+  }
+
+  // Seed-based base financials
+  const baseRevenue = 500 + rng() * 49500; // 500 to 50000 Cr
+  const baseMg = 0.08 + rng() * 0.22; // 8-30% net margin
+  const baseEbitdaMg = baseMg + 0.05 + rng() * 0.1; // ebitda > net profit
+  const baseEPS = 2 + rng() * 198;
+  const revenueGrowthTrend = 0.06 + rng() * 0.14; // 6-20% annual growth
+  const volatility = 0.03 + rng() * 0.07;
+
+  // Starting FY is either 2006 or IPO year FY
+  const startFY = startYear <= 2005 ? 2006 : startYear + 1;
+  const startQ = 1;
+
+  let revenue =
+    baseRevenue * (1 - revenueGrowthTrend) ** (lastCompletedFY - startFY);
+  // Avoid negative revenue from poor math
+  if (revenue < 10) revenue = 10;
+
+  const allQData: {
+    q: number;
+    fy: number;
+    rev: number;
+    np: number;
+    ebitda: number;
+    eps: number;
+  }[] = [];
+
+  // Generate from start to lastCompleted
+  for (let fy = startFY; fy <= lastCompletedFY; fy++) {
+    const maxQ = fy === lastCompletedFY ? lastCompletedQ : 4;
+    const minQ = fy === startFY ? startQ : 1;
+    for (let q = minQ; q <= maxQ; q++) {
+      const qGrowth = (1 + revenueGrowthTrend) ** (1 / 4);
+      const noise = 1 + (rng() - 0.5) * volatility * 2;
+      revenue = revenue * qGrowth * noise;
+      const npMargin = Math.max(0.01, baseMg + (rng() - 0.5) * 0.06);
+      const ebitdaMarginVal = Math.max(
+        npMargin + 0.02,
+        baseEbitdaMg + (rng() - 0.5) * 0.04,
+      );
+      const np = revenue * npMargin;
+      const ebitdaVal = revenue * ebitdaMarginVal;
+      const epsVal =
+        baseEPS *
+        (1 + revenueGrowthTrend * 0.7) ** (fy - startFY + (q - 1) / 4) *
+        (0.9 + rng() * 0.2);
+
+      allQData.push({
+        q,
+        fy,
+        rev: +revenue.toFixed(2),
+        np: +np.toFixed(2),
+        ebitda: +ebitdaVal.toFixed(2),
+        eps: +epsVal.toFixed(2),
+      });
+    }
+  }
+
+  // Now build QuarterlyResult with YoY
+  for (let i = 0; i < allQData.length; i++) {
+    const d = allQData[i];
+    // Quarter label e.g. "Q1 FY06"
+    const fyShort = String(d.fy).slice(-2);
+    const label = `Q${d.q} FY${fyShort}`;
+
+    // Quarter start date
+    let qStartMonth: number;
+    let qYear: number;
+    if (d.q === 1) {
+      qStartMonth = 3;
+      qYear = d.fy - 1;
+    } // Apr = month 3, year = fy-1
+    else if (d.q === 2) {
+      qStartMonth = 6;
+      qYear = d.fy - 1;
+    } // Jul = month 6
+    else if (d.q === 3) {
+      qStartMonth = 9;
+      qYear = d.fy - 1;
+    } // Oct = month 9
+    else {
+      qStartMonth = 0;
+      qYear = d.fy;
+    } // Jan = month 0, year = fy
+
+    const quarterDate = new Date(qYear, qStartMonth, 1);
+
+    // Find same quarter last year for YoY
+    const prevIdx = allQData.findIndex((p) => p.q === d.q && p.fy === d.fy - 1);
+    const prev = prevIdx >= 0 ? allQData[prevIdx] : null;
+
+    const revYoY = prev ? +((d.rev / prev.rev - 1) * 100).toFixed(1) : null;
+    const npYoY = prev ? +((d.np / prev.np - 1) * 100).toFixed(1) : null;
+
+    quarters.push({
+      quarter: label,
+      quarterDate,
+      revenue: d.rev,
+      netProfit: d.np,
+      ebitda: d.ebitda,
+      eps: d.eps,
+      revenueGrowthYoY: revYoY,
+      netProfitGrowthYoY: npYoY,
+      ebitdaMargin: +((d.ebitda / d.rev) * 100).toFixed(1),
+      netProfitMargin: +((d.np / d.rev) * 100).toFixed(1),
+    });
+  }
+
+  // Store all, sorted newest first
+  quarters.reverse();
+  quarterlyResultsCache[sym] = quarters;
+  return quarters;
+}
+
+// ─── Analytics helpers ────────────────────────────────────────────────────────
+function calcCAGR(start: number, end: number, years: number): number {
+  if (start <= 0 || end <= 0 || years <= 0) return 0;
+  return +(((end / start) ** (1 / years) - 1) * 100).toFixed(1);
+}
+
+function computeBuiltinMetrics(
+  quarters: QuarterlyResult[],
+  periodQ = 20,
+): { name: string; value: string; description: string }[] {
+  if (quarters.length < 4) return [];
+
+  const effectivePeriod = Math.min(periodQ, quarters.length);
+  const recentQ = quarters.slice(0, effectivePeriod);
+  const last = recentQ[0];
+  // Use periodQ as the look-back; periodQ/4 = years
+  const years = periodQ / 4;
+  const periodIdx = Math.min(effectivePeriod - 1, quarters.length - 1);
+  const periodAgo = quarters[periodIdx];
+
+  const revCAGR = calcCAGR(periodAgo.revenue, last.revenue, years);
+  const npCAGR = calcCAGR(
+    Math.abs(periodAgo.netProfit),
+    Math.abs(last.netProfit),
+    years,
+  );
+  const epsCAGR = calcCAGR(Math.abs(periodAgo.eps), Math.abs(last.eps), years);
+
+  const avgEbitdaMargin = +(
+    recentQ.reduce((s, q) => s + q.ebitdaMargin, 0) / recentQ.length
+  ).toFixed(1);
+  const avgNpMargin = +(
+    recentQ.reduce((s, q) => s + q.netProfitMargin, 0) / recentQ.length
+  ).toFixed(1);
+
+  const revWithYoY = recentQ.filter((q) => q.revenueGrowthYoY !== null);
+  const revConsistency =
+    revWithYoY.length > 0
+      ? +(
+          (revWithYoY.filter((q) => (q.revenueGrowthYoY ?? 0) > 0).length /
+            revWithYoY.length) *
+          100
+        ).toFixed(0)
+      : 0;
+  const npWithYoY = recentQ.filter((q) => q.netProfitGrowthYoY !== null);
+  const npConsistency =
+    npWithYoY.length > 0
+      ? +(
+          (npWithYoY.filter((q) => (q.netProfitGrowthYoY ?? 0) > 0).length /
+            npWithYoY.length) *
+          100
+        ).toFixed(0)
+      : 0;
+
+  const yLabel = years % 1 === 0 ? `${years}Y` : `${effectivePeriod}Q`;
+  // Dynamic period label for metric names
+  const periodLabel = periodQ % 4 === 0 ? `${periodQ / 4}Y` : `${periodQ}Q`;
+
+  return [
+    {
+      name: `Revenue CAGR (${periodLabel})`,
+      value: `${revCAGR}%`,
+      description: `Compounded annual growth rate of revenue over last ${yLabel}`,
+    },
+    {
+      name: `Net Profit CAGR (${periodLabel})`,
+      value: `${npCAGR}%`,
+      description: `Compounded annual growth rate of net profit over last ${yLabel}`,
+    },
+    {
+      name: `EPS CAGR (${periodLabel})`,
+      value: `${epsCAGR}%`,
+      description: `Compounded annual growth rate of earnings per share over last ${yLabel}`,
+    },
+    {
+      name: `Avg EBITDA Margin (${periodLabel})`,
+      value: `${avgEbitdaMargin}%`,
+      description: `Average EBITDA margin over last ${effectivePeriod} quarters`,
+    },
+    {
+      name: `Avg NP Margin (${periodLabel})`,
+      value: `${avgNpMargin}%`,
+      description: `Average net profit margin over last ${effectivePeriod} quarters`,
+    },
+    {
+      name: "Revenue Consistency",
+      value: `${revConsistency}%`,
+      description: `% of quarters with positive YoY revenue growth (last ${effectivePeriod} qtrs)`,
+    },
+    {
+      name: "Profit Consistency",
+      value: `${npConsistency}%`,
+      description: `% of quarters with positive YoY net profit growth (last ${effectivePeriod} qtrs)`,
+    },
+  ];
+}
+
+// ─── OI / Macro aggregation helpers ──────────────────────────────────────────
+
+// Helper: aggregate daily OI data into quarterly buckets (3-month window from quarterDate)
+function getQuarterlyOIValue(
+  oiData: ExtendedPCRBarData[],
+  quarterDate: Date,
+  field: "pcrRatio" | "peOI" | "ceOI",
+): number {
+  const y = quarterDate.getFullYear();
+  const m = quarterDate.getMonth();
+  const rows = oiData.filter((row) => {
+    const rd = new Date(row.date);
+    const ry = rd.getFullYear();
+    const rm = rd.getMonth();
+    return ry === y && (rm === m || rm === m + 1 || rm === m + 2);
+  });
+  if (rows.length === 0) return 0;
+  const sum = rows.reduce((s, r) => s + r[field], 0);
+  return field === "pcrRatio"
+    ? +(sum / rows.length).toFixed(3)
+    : Math.round(sum / rows.length);
+}
+
+// Helper: get macro value closest to a date from a time-series
+function getMacroValueNearDate<T extends { date: string | Date }>(
+  arr: T[],
+  targetDate: Date,
+  field: keyof T,
+): number {
+  if (arr.length === 0) return 0;
+  let best = arr[0];
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (const entry of arr) {
+    const d = new Date(entry.date as string);
+    const diff = Math.abs(d.getTime() - targetDate.getTime());
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = entry;
+    }
+  }
+  const val = best[field];
+  return typeof val === "number" ? val : 0;
+}
+
+function evalCustomMetric(
+  formula: string,
+  quarters: QuarterlyResult[],
+  sym?: string,
+  periodQ?: number,
+): { value: number | null; error: string | null } {
+  const maxPeriod = periodQ ?? 20;
+  const recent = quarters.slice(0, Math.min(maxPeriod, quarters.length));
+  if (recent.length === 0) return { value: null, error: "No data" };
+
+  const avgRevenue = recent.reduce((s, q) => s + q.revenue, 0) / recent.length;
+  const avgNetProfit =
+    recent.reduce((s, q) => s + q.netProfit, 0) / recent.length;
+  const avgEBITDA = recent.reduce((s, q) => s + q.ebitda, 0) / recent.length;
+  const avgEPS = recent.reduce((s, q) => s + q.eps, 0) / recent.length;
+  const avgEbitdaMargin =
+    recent.reduce((s, q) => s + q.ebitdaMargin, 0) / recent.length;
+  const avgNpMargin =
+    recent.reduce((s, q) => s + q.netProfitMargin, 0) / recent.length;
+
+  // Real macro values pulled from live data arrays
+  const NiftyClose = NIFTY_DATA[NIFTY_DATA.length - 1]?.close ?? 22000;
+  const MacroCPI =
+    MACRO_CPI_WPI_FULL[MACRO_CPI_WPI_FULL.length - 1]?.cpi ?? 5.2;
+  const MacroWPI =
+    MACRO_CPI_WPI_FULL[MACRO_CPI_WPI_FULL.length - 1]?.wpi ?? 2.1;
+  const FIIFlow = MACRO_FII_FULL[MACRO_FII_FULL.length - 1]?.fii ?? -1200;
+  const MacroDII = MACRO_FII_FULL[MACRO_FII_FULL.length - 1]?.dii ?? 800;
+  const MacroUSDINR =
+    MACRO_USDINT_FULL[MACRO_USDINT_FULL.length - 1]?.value ?? 83.5;
+  const MacroCrudeWTI =
+    MACRO_CRUDE_FULL[MACRO_CRUDE_FULL.length - 1]?.wti ?? 75;
+  const MacroCrudeBrent =
+    MACRO_CRUDE_FULL[MACRO_CRUDE_FULL.length - 1]?.brent ?? 78;
+  const Macro3YGsec = MACRO_GSEC_FULL[MACRO_GSEC_FULL.length - 1]?.y3 ?? 6.8;
+  const Macro5YGsec = MACRO_GSEC_FULL[MACRO_GSEC_FULL.length - 1]?.y5 ?? 7.0;
+  const Macro10YGsec = MACRO_GSEC_FULL[MACRO_GSEC_FULL.length - 1]?.y10 ?? 7.2;
+  const MacroGDP =
+    MACRO_GDP_CAD_FULL[MACRO_GDP_CAD_FULL.length - 1]?.gdp ?? 7.0;
+  const MacroRepoRate =
+    MACRO_RATES_FULL[MACRO_RATES_FULL.length - 1]?.repoRate ?? 6.5;
+  const MacroFXReserve =
+    MACRO_FXRESERVE_FULL[MACRO_FXRESERVE_FULL.length - 1]?.value ?? 650;
+
+  // Index & Stock OI variables (averaged over selected period using most recent quarter date)
+  const niftyCM = NIFTY_PCR_OI_FULL.CM;
+  const bnkCM = BANKNIFTY_PCR_OI_FULL.CM;
+  const stockOIKey = sym
+    ? Object.keys(stockPCROIFullCache).find(
+        (k) => k === `${sym}_CM` || k.startsWith(`${sym}_`),
+      )
+    : undefined;
+  const stockOIArr: ExtendedPCRBarData[] =
+    sym && stockOIKey ? (stockPCROIFullCache[stockOIKey] ?? []) : [];
+
+  // Use most recent quarter's date for OI reference
+  const refDate = recent[0]?.quarterDate ?? new Date();
+  const NiftyOI_PE = getQuarterlyOIValue(niftyCM, refDate, "peOI");
+  const NiftyOI_CE = getQuarterlyOIValue(niftyCM, refDate, "ceOI");
+  const NiftyPCR =
+    getQuarterlyOIValue(niftyCM, refDate, "pcrRatio") ||
+    NiftyOI_PE / (NiftyOI_CE || 1);
+  const BankNiftyOI_PE = getQuarterlyOIValue(bnkCM, refDate, "peOI");
+  const BankNiftyOI_CE = getQuarterlyOIValue(bnkCM, refDate, "ceOI");
+  const BankNiftyPCR =
+    getQuarterlyOIValue(bnkCM, refDate, "pcrRatio") ||
+    BankNiftyOI_PE / (BankNiftyOI_CE || 1);
+
+  const StockOI_PE = getQuarterlyOIValue(stockOIArr, refDate, "peOI");
+  const StockOI_CE = getQuarterlyOIValue(stockOIArr, refDate, "ceOI");
+  const StockPCR =
+    getQuarterlyOIValue(stockOIArr, refDate, "pcrRatio") ||
+    StockOI_PE / (StockOI_CE || 1);
+
+  // Stock price / volume (last close and average volume in period)
+  const stockPriceData = sym ? getStockData(sym) : [];
+  const _sOhlc = stockPriceData.filter((d) => {
+    const dy = d.date.getFullYear();
+    const dm = d.date.getMonth();
+    return (
+      dy === refDate.getFullYear() &&
+      dm >= refDate.getMonth() &&
+      dm <= refDate.getMonth() + 2
+    );
+  });
+  const StockClose =
+    _sOhlc.length > 0
+      ? _sOhlc[_sOhlc.length - 1].close
+      : (stockPriceData[stockPriceData.length - 1]?.close ?? 0);
+  const StockVolume =
+    _sOhlc.length > 0
+      ? Math.round(_sOhlc.reduce((s, d) => s + d.volume, 0) / _sOhlc.length)
+      : 0;
+
+  try {
+    const evalCode = `const Revenue=${avgRevenue};const NetProfit=${avgNetProfit};const EBITDA=${avgEBITDA};const EPS=${avgEPS};const EbitdaMargin=${avgEbitdaMargin};const NpMargin=${avgNpMargin};const NiftyClose=${NiftyClose};const MacroCPI=${MacroCPI};const MacroWPI=${MacroWPI};const FIIFlow=${FIIFlow};const MacroDII=${MacroDII};const MacroUSDINR=${MacroUSDINR};const MacroCrudeWTI=${MacroCrudeWTI};const MacroCrudeBrent=${MacroCrudeBrent};const Macro3YGsec=${Macro3YGsec};const Macro5YGsec=${Macro5YGsec};const Macro10YGsec=${Macro10YGsec};const MacroGDP=${MacroGDP};const MacroRepoRate=${MacroRepoRate};const MacroFXReserve=${MacroFXReserve};const NiftyOI_PE=${NiftyOI_PE};const NiftyOI_CE=${NiftyOI_CE};const NiftyPCR=${NiftyPCR};const BankNiftyOI_PE=${BankNiftyOI_PE};const BankNiftyOI_CE=${BankNiftyOI_CE};const BankNiftyPCR=${BankNiftyPCR};const StockOI_PE=${StockOI_PE};const StockOI_CE=${StockOI_CE};const StockPCR=${StockPCR};const StockClose=${StockClose};const StockVolume=${StockVolume};(${formula})`;
+    // biome-ignore lint/security/noGlobalEval: intentional formula evaluator for user-defined metrics
+    const result = eval(evalCode);
+    if (typeof result === "number" && Number.isFinite(result)) {
+      return { value: +result.toFixed(2), error: null };
+    }
+    return { value: null, error: "Formula did not return a number" };
+  } catch (e) {
+    return { value: null, error: String(e) };
+  }
+}
+
+// ─── Stock Results Search (inline, reuses STOCKS array) ─────────────────────
+function StockResultsSearch({
+  value,
+  onChange,
+}: { value: string; onChange: (v: string) => void }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase();
+    if (!q) return STOCKS.slice(0, 40);
+    return STOCKS.filter(
+      (s) =>
+        s.sym.toLowerCase().includes(q) || s.name.toLowerCase().includes(q),
+    ).slice(0, 40);
+  }, [query]);
+
+  const current = STOCKS.find((s) => s.sym === value) ?? STOCKS[0];
+
+  return (
+    <div className="relative" ref={ref}>
+      <div className="flex flex-wrap gap-3 items-center p-4 border-b border-slate-700">
+        <span className="text-slate-400 text-sm font-medium">Stock:</span>
+        <button
+          type="button"
+          data-ocid="stockresults.stock.select"
+          onClick={() => setOpen((o) => !o)}
+          className="bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 flex items-center gap-3 min-w-56 hover:border-blue-500 transition-colors"
+        >
+          <span className="font-bold text-blue-400">{current.sym}</span>
+          <span className="text-slate-400 text-xs truncate max-w-32">
+            {current.name}
+          </span>
+          <span className="text-slate-500 ml-auto">▾</span>
+        </button>
+        <input
+          type="search"
+          placeholder="Search Nifty Total Market..."
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          data-ocid="stockresults.stock.search_input"
+          className="bg-slate-900 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2 outline-none w-52 focus:border-blue-500 transition-colors"
+        />
+      </div>
+      {open && (
+        <div className="absolute top-16 left-4 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl max-h-64 overflow-y-auto z-50 w-80 mt-1">
+          {filtered.map((s) => (
+            <button
+              type="button"
+              key={s.sym}
+              className="w-full text-left px-4 py-2.5 text-sm hover:bg-slate-700 transition-colors"
+              onClick={() => {
+                onChange(s.sym);
+                setOpen(false);
+                setQuery("");
+              }}
+            >
+              <span className="font-bold text-blue-400">{s.sym}</span>
+              <span className="text-slate-400 text-xs ml-2">{s.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Global Custom Metrics localStorage helpers ───────────────────────────────
+function loadGlobalMetrics(): CustomMetric[] {
+  try {
+    const saved = localStorage.getItem("global_custom_metrics");
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveGlobalMetrics(metrics: CustomMetric[]) {
+  try {
+    localStorage.setItem("global_custom_metrics", JSON.stringify(metrics));
+  } catch {
+    /* ignore */
+  }
+}
+
+// ─── Panel 2: Analytics Matrix ────────────────────────────────────────────────
+
+// Base keys for standard metrics (period-independent identifiers for selection persistence)
+const STANDARD_METRIC_BASE_KEYS = [
+  "Revenue CAGR",
+  "Net Profit CAGR",
+  "EPS CAGR",
+  "Avg EBITDA Margin",
+  "Avg NP Margin",
+  "Revenue Consistency",
+  "Profit Consistency",
+] as const;
+
+// Extract base key from a metric name by stripping trailing (XY) or (XQ) suffix
+function metricBaseKey(name: string): string {
+  return name.replace(/\s*\(\d+[YQ]\)$/, "").trim();
+}
+
+function AnalyticsMatrixPanel({ sym }: { sym: string }) {
+  // Generate quarters internally
+  const allQuarters = useMemo(() => genQuarterlyResults(sym), [sym]);
+
+  // --- Period inputs ---
+  const [numQuarters, setNumQuarters] = useState<number | "">(20);
+  const [numYears, setNumYears] = useState<number | "">("");
+
+  const periodQuarters: number =
+    numYears !== ""
+      ? Number(numYears) * 4
+      : numQuarters !== ""
+        ? Number(numQuarters)
+        : 20;
+
+  const computeQuarters = useMemo(
+    () => allQuarters.slice(0, Math.max(4, periodQuarters)),
+    [allQuarters, periodQuarters],
+  );
+
+  // --- Multi-select metrics panel ---
+  const [showMetricPanel, setShowMetricPanel] = useState(false);
+  const metricPanelRef = useRef<HTMLDivElement>(null);
+
+  // Close metric panel on outside click
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (
+        metricPanelRef.current &&
+        !metricPanelRef.current.contains(e.target as Node)
+      )
+        setShowMetricPanel(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // --- Notes ---
+  const [note, setNote] = useState<string>(() => {
+    try {
+      return localStorage.getItem(`analytics_notes_${sym}`) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [noteSaved, setNoteSaved] = useState(false);
+
+  // --- Active standard metrics per stock (stored as base keys, period-independent) ---
+  const [activeStdMetrics, setActiveStdMetrics] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(`stock_active_metrics_${sym}`);
+      if (saved) {
+        // Migrate legacy "Revenue CAGR (5Y)" style entries to base keys
+        const parsed: string[] = JSON.parse(saved);
+        return new Set(parsed.map(metricBaseKey));
+      }
+      return new Set(STANDARD_METRIC_BASE_KEYS);
+    } catch {
+      return new Set(STANDARD_METRIC_BASE_KEYS);
+    }
+  });
+
+  // --- Custom metrics for this stock ---
+  const [customMetrics, setCustomMetrics] = useState<CustomMetric[]>(() => {
+    try {
+      const saved = localStorage.getItem(`custom_metrics_${sym}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // --- Global custom metrics ---
+  const [globalMetrics, setGlobalMetrics] = useState<CustomMetric[]>(() =>
+    loadGlobalMetrics(),
+  );
+
+  // --- Active global metrics applied to this stock ---
+  const [activeGlobalMetricIds, setActiveGlobalMetricIds] = useState<
+    Set<string>
+  >(() => {
+    try {
+      const saved = localStorage.getItem(`stock_global_metric_ids_${sym}`);
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // --- Custom form ---
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newMetricName, setNewMetricName] = useState("");
+  const [newMetricFormula, setNewMetricFormula] = useState("");
+  const [newMetricNote, setNewMetricNote] = useState("");
+
+  // --- Inline edit state ---
+  const [editingIdx, setEditingIdx] = useState<{
+    type: "builtin" | "custom";
+    idx: number;
+  } | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editFormula, setEditFormula] = useState("");
+  const [editNote, setEditNote] = useState("");
+  const [savedRowIdx, setSavedRowIdx] = useState<number | null>(null);
+
+  // Reload when sym changes
+  useEffect(() => {
+    try {
+      setNote(localStorage.getItem(`analytics_notes_${sym}`) ?? "");
+    } catch {
+      setNote("");
+    }
+    try {
+      const saved = localStorage.getItem(`custom_metrics_${sym}`);
+      setCustomMetrics(saved ? JSON.parse(saved) : []);
+    } catch {
+      setCustomMetrics([]);
+    }
+    try {
+      const saved = localStorage.getItem(`stock_active_metrics_${sym}`);
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        setActiveStdMetrics(new Set(parsed.map(metricBaseKey)));
+      } else {
+        setActiveStdMetrics(new Set(STANDARD_METRIC_BASE_KEYS));
+      }
+    } catch {
+      setActiveStdMetrics(new Set(STANDARD_METRIC_BASE_KEYS));
+    }
+    try {
+      const saved = localStorage.getItem(`stock_global_metric_ids_${sym}`);
+      setActiveGlobalMetricIds(saved ? new Set(JSON.parse(saved)) : new Set());
+    } catch {
+      setActiveGlobalMetricIds(new Set());
+    }
+    setGlobalMetrics(loadGlobalMetrics());
+    setShowAddForm(false);
+    setEditingIdx(null);
+  }, [sym]);
+
+  const builtinMetrics = useMemo(
+    () => computeBuiltinMetrics(computeQuarters, periodQuarters),
+    [computeQuarters, periodQuarters],
+  );
+
+  const activeBuiltinMetrics = useMemo(
+    () =>
+      builtinMetrics.filter((m) => activeStdMetrics.has(metricBaseKey(m.name))),
+    [builtinMetrics, activeStdMetrics],
+  );
+
+  // Active global metrics evaluated for this stock
+  const activeGlobalMetricsEval = useMemo(() => {
+    return globalMetrics
+      .filter((m) => activeGlobalMetricIds.has(m.id))
+      .map((m) => {
+        const { value, error } = evalCustomMetric(
+          m.formula,
+          computeQuarters,
+          sym,
+          periodQuarters,
+        );
+        return { ...m, value, error };
+      });
+  }, [
+    globalMetrics,
+    activeGlobalMetricIds,
+    computeQuarters,
+    sym,
+    periodQuarters,
+  ]);
+
+  const saveCustomMetrics = useCallback(
+    (metrics: CustomMetric[]) => {
+      setCustomMetrics(metrics);
+      try {
+        localStorage.setItem(`custom_metrics_${sym}`, JSON.stringify(metrics));
+      } catch {
+        /* ignore */
+      }
+    },
+    [sym],
+  );
+
+  const persistActiveStd = useCallback(
+    (s: Set<string>) => {
+      setActiveStdMetrics(new Set(s));
+      try {
+        localStorage.setItem(
+          `stock_active_metrics_${sym}`,
+          JSON.stringify([...s]),
+        );
+      } catch {
+        /* ignore */
+      }
+    },
+    [sym],
+  );
+
+  const persistActiveGlobal = useCallback(
+    (s: Set<string>) => {
+      setActiveGlobalMetricIds(new Set(s));
+      try {
+        localStorage.setItem(
+          `stock_global_metric_ids_${sym}`,
+          JSON.stringify([...s]),
+        );
+      } catch {
+        /* ignore */
+      }
+    },
+    [sym],
+  );
+
+  const addCustomMetric = useCallback(() => {
+    if (!newMetricName.trim() || !newMetricFormula.trim()) return;
+    const { value, error } = evalCustomMetric(
+      newMetricFormula,
+      computeQuarters,
+      sym,
+      periodQuarters,
+    );
+    const metric: CustomMetric = {
+      id: `${Date.now()}`,
+      name: newMetricName.trim(),
+      formula: newMetricFormula.trim(),
+      note: newMetricNote.trim() || undefined,
+      value,
+      error,
+      isGlobal: true,
+    };
+    // Save to global
+    const updatedGlobal = [...loadGlobalMetrics(), metric];
+    saveGlobalMetrics(updatedGlobal);
+    setGlobalMetrics(updatedGlobal);
+    // Save to this stock's custom metrics too
+    saveCustomMetrics([...customMetrics, metric]);
+    // Auto-activate for this stock
+    const next = new Set(activeGlobalMetricIds);
+    next.add(metric.id);
+    persistActiveGlobal(next);
+    setNewMetricName("");
+    setNewMetricFormula("");
+    setNewMetricNote("");
+    setShowAddForm(false);
+  }, [
+    newMetricName,
+    newMetricFormula,
+    newMetricNote,
+    computeQuarters,
+    customMetrics,
+    saveCustomMetrics,
+    activeGlobalMetricIds,
+    persistActiveGlobal,
+    sym,
+    periodQuarters,
+  ]);
+
+  const saveRowMetric = useCallback(
+    (
+      type: "builtin" | "custom",
+      idx: number,
+      name: string,
+      formula: string,
+      rowNote: string,
+    ) => {
+      try {
+        const existing: {
+          type: string;
+          idx: number;
+          name: string;
+          formula: string;
+          note: string;
+        }[] = JSON.parse(localStorage.getItem(`stock_metrics_${sym}`) ?? "[]");
+        const key = `${type}-${idx}`;
+        const filtered = existing.filter((e) => `${e.type}-${e.idx}` !== key);
+        filtered.push({ type, idx, name, formula, note: rowNote });
+        localStorage.setItem(`stock_metrics_${sym}`, JSON.stringify(filtered));
+        setSavedRowIdx(idx);
+        setTimeout(() => setSavedRowIdx(null), 1800);
+      } catch {
+        /* ignore */
+      }
+    },
+    [sym],
+  );
+
+  const startEdit = (type: "builtin" | "custom", idx: number) => {
+    setEditingIdx({ type, idx });
+    if (type === "builtin") {
+      const m = activeBuiltinMetrics[idx];
+      setEditName(m?.name ?? "");
+      // Load any existing override formula from localStorage
+      try {
+        const overrideKey = `stock_metric_formula_${sym}_${idx}`;
+        const overrideFormula = localStorage.getItem(overrideKey) ?? "";
+        setEditFormula(overrideFormula);
+      } catch {
+        setEditFormula("");
+      }
+      setEditNote("");
+    } else {
+      const m = customMetrics[idx];
+      setEditName(m?.name ?? "");
+      setEditFormula(m?.formula ?? "");
+      setEditNote(m?.note ?? "");
+    }
+  };
+
+  const applyEdit = useCallback(() => {
+    if (!editingIdx) return;
+    if (editingIdx.type === "custom") {
+      const updated = customMetrics.map((m, i) =>
+        i === editingIdx.idx
+          ? {
+              ...m,
+              name: editName || m.name,
+              formula: editFormula || m.formula,
+              note: editNote || undefined,
+            }
+          : m,
+      );
+      saveCustomMetrics(updated);
+      // Also update in global if isGlobal
+      const oldM = customMetrics[editingIdx.idx];
+      if (oldM?.isGlobal) {
+        const updatedGlobal = loadGlobalMetrics().map((gm) =>
+          gm.id === oldM.id
+            ? {
+                ...gm,
+                name: editName || gm.name,
+                formula: editFormula || gm.formula,
+                note: editNote || undefined,
+              }
+            : gm,
+        );
+        saveGlobalMetrics(updatedGlobal);
+        setGlobalMetrics(updatedGlobal);
+      }
+    }
+    // For builtin: store formula override in localStorage if provided
+    if (editingIdx.type === "builtin" && editFormula.trim()) {
+      try {
+        localStorage.setItem(
+          `stock_metric_formula_${sym}_${editingIdx.idx}`,
+          editFormula.trim(),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+    // Save note for builtin
+    const metric =
+      editingIdx.type === "builtin"
+        ? activeBuiltinMetrics[editingIdx.idx]
+        : customMetrics[editingIdx.idx];
+    if (metric) {
+      saveRowMetric(
+        editingIdx.type,
+        editingIdx.idx,
+        editName || metric.name,
+        editFormula ||
+          (editingIdx.type === "custom"
+            ? (metric as CustomMetric).formula
+            : ""),
+        editNote,
+      );
+    }
+    setEditingIdx(null);
+  }, [
+    editingIdx,
+    editName,
+    editFormula,
+    editNote,
+    customMetrics,
+    saveCustomMetrics,
+    activeBuiltinMetrics,
+    saveRowMetric,
+    sym,
+  ]);
+
+  const deleteCustomMetric = useCallback(
+    (id: string) => {
+      saveCustomMetrics(customMetrics.filter((m) => m.id !== id));
+    },
+    [customMetrics, saveCustomMetrics],
+  );
+
+  const removeGlobalMetric = useCallback(
+    (id: string) => {
+      const next = new Set(activeGlobalMetricIds);
+      next.delete(id);
+      persistActiveGlobal(next);
+    },
+    [activeGlobalMetricIds, persistActiveGlobal],
+  );
+
+  const saveNote = () => {
+    try {
+      localStorage.setItem(`analytics_notes_${sym}`, note);
+    } catch {
+      /* ignore */
+    }
+    setNoteSaved(true);
+    setTimeout(() => setNoteSaved(false), 1800);
+  };
+  const clearNote = () => {
+    setNote("");
+    try {
+      localStorage.removeItem(`analytics_notes_${sym}`);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const totalRows =
+    activeBuiltinMetrics.length +
+    activeGlobalMetricsEval.length +
+    customMetrics.length;
+
+  return (
+    <Card>
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-sm font-bold text-slate-100">Analytics Matrix</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Pre-built metrics + custom formulas for {sym}
+          </p>
+        </div>
+
+        {/* Period inputs */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <label
+              htmlFor="period-quarters"
+              className="text-xs text-slate-400 whitespace-nowrap"
+            >
+              # Quarters
+            </label>
+            <input
+              id="period-quarters"
+              type="number"
+              min={1}
+              max={80}
+              value={numQuarters}
+              data-ocid="resultsanalytics.period.quarters.input"
+              onChange={(e) => {
+                setNumQuarters(
+                  e.target.value === "" ? "" : Number(e.target.value),
+                );
+                setNumYears("");
+              }}
+              className="w-16 bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+          <span className="text-xs text-slate-600">or</span>
+          <div className="flex items-center gap-1.5">
+            <label
+              htmlFor="period-years"
+              className="text-xs text-slate-400 whitespace-nowrap"
+            >
+              # Years
+            </label>
+            <input
+              id="period-years"
+              type="number"
+              min={1}
+              max={20}
+              value={numYears}
+              data-ocid="resultsanalytics.period.years.input"
+              onChange={(e) => {
+                setNumYears(
+                  e.target.value === "" ? "" : Number(e.target.value),
+                );
+                setNumQuarters("");
+              }}
+              className="w-16 bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+          <span className="text-xs text-slate-500 bg-slate-900 px-2 py-1 rounded">
+            {periodQuarters}Q / {(periodQuarters / 4).toFixed(1)}Y
+          </span>
+        </div>
+      </div>
+
+      {/* Notes section */}
+      <div className="mb-4 bg-slate-900/60 border border-slate-700 rounded-lg p-3 space-y-2">
+        <label
+          htmlFor="analytics-notes"
+          className="text-xs font-semibold text-slate-300 block"
+        >
+          Notes
+        </label>
+        <textarea
+          id="analytics-notes"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          data-ocid="resultsanalytics.notes.textarea"
+          placeholder={`Add plain text notes for ${sym}...`}
+          rows={3}
+          className="w-full bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors resize-y"
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            data-ocid="resultsanalytics.notes.save_button"
+            onClick={saveNote}
+            className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+          >
+            {noteSaved ? "✓ Saved" : "Save Note"}
+          </button>
+          {note && (
+            <button
+              type="button"
+              data-ocid="resultsanalytics.notes.clear_button"
+              onClick={clearNote}
+              className="px-3 py-1.5 text-xs border border-slate-600 text-slate-400 rounded-lg hover:border-red-700 hover:text-red-400 transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Multi-select Metric Panel */}
+      <div
+        className="mb-4 flex flex-wrap items-center gap-3"
+        ref={metricPanelRef}
+      >
+        <div className="relative">
+          <button
+            type="button"
+            data-ocid="resultsanalytics.metrics.panel.toggle"
+            onClick={() => setShowMetricPanel((o) => !o)}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-slate-800 border border-slate-600 text-slate-300 rounded-lg hover:border-blue-500 hover:text-blue-400 transition-colors"
+          >
+            Select Metrics ▾
+            <span className="bg-blue-900 text-blue-300 px-1.5 py-0.5 rounded text-xs">
+              {activeStdMetrics.size + activeGlobalMetricIds.size}
+            </span>
+          </button>
+          {showMetricPanel && (
+            <div className="absolute top-9 left-0 z-40 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-72 p-3 space-y-2">
+              <div className="text-xs font-semibold text-slate-400 px-1 mb-1">
+                Standard Metrics
+              </div>
+              {STANDARD_METRIC_BASE_KEYS.map((baseKey, si) => (
+                <label
+                  key={baseKey}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700 cursor-pointer transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    data-ocid={`resultsanalytics.metrics.std.checkbox.${si + 1}`}
+                    checked={activeStdMetrics.has(baseKey)}
+                    onChange={() => {
+                      const next = new Set(activeStdMetrics);
+                      if (next.has(baseKey)) next.delete(baseKey);
+                      else next.add(baseKey);
+                      persistActiveStd(next);
+                    }}
+                    className="w-3 h-3 rounded accent-blue-500"
+                  />
+                  <span className="text-xs text-slate-300">{baseKey}</span>
+                  {activeStdMetrics.has(baseKey) && (
+                    <span className="ml-auto text-green-400 text-xs">✓</span>
+                  )}
+                </label>
+              ))}
+              {globalMetrics.length > 0 && (
+                <>
+                  <div className="text-xs font-semibold text-slate-400 px-1 pt-2 border-t border-slate-700">
+                    Saved Custom Metrics
+                  </div>
+                  {globalMetrics.map((m, gi) => (
+                    <label
+                      key={m.id}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700 cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        data-ocid={`resultsanalytics.metrics.custom.checkbox.${gi + 1}`}
+                        checked={activeGlobalMetricIds.has(m.id)}
+                        onChange={() => {
+                          const next = new Set(activeGlobalMetricIds);
+                          if (next.has(m.id)) next.delete(m.id);
+                          else next.add(m.id);
+                          persistActiveGlobal(next);
+                        }}
+                        className="w-3 h-3 rounded accent-purple-500"
+                      />
+                      <span className="text-xs text-slate-300">{m.name}</span>
+                      <span className="ml-auto text-purple-400 text-xs">
+                        global
+                      </span>
+                    </label>
+                  ))}
+                </>
+              )}
+              <div className="pt-2 border-t border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddForm(true);
+                    setShowMetricPanel(false);
+                  }}
+                  className="w-full text-left px-2 py-1.5 text-xs text-blue-400 hover:bg-slate-700 rounded-lg transition-colors"
+                >
+                  + Create Custom Metric...
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        <span className="text-xs text-slate-500">
+          {computeQuarters.length} periods computed
+        </span>
+      </div>
+
+      {/* Add Custom Metric Form */}
+      {showAddForm && (
+        <div
+          data-ocid="stockresults.analytics.modal"
+          className="mb-4 bg-slate-900 border border-slate-700 rounded-lg p-4 space-y-3"
+        >
+          <h3 className="text-xs font-semibold text-slate-300">
+            New Custom Metric{" "}
+            <span className="text-purple-400 font-normal">
+              (saved globally — available for all stocks)
+            </span>
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor="custom-metric-name"
+                className="text-xs text-slate-500 block mb-1"
+              >
+                Metric Name
+              </label>
+              <input
+                id="custom-metric-name"
+                type="text"
+                placeholder="e.g. P/E Proxy"
+                value={newMetricName}
+                onChange={(e) => setNewMetricName(e.target.value)}
+                data-ocid="resultsanalytics.analytics.input"
+                className="w-full bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="custom-metric-formula"
+                className="text-xs text-slate-500 block mb-1"
+              >
+                Formula
+              </label>
+              <input
+                id="custom-metric-formula"
+                type="text"
+                placeholder="e.g. Revenue / NetProfit * 100"
+                value={newMetricFormula}
+                onChange={(e) => setNewMetricFormula(e.target.value)}
+                data-ocid="resultsanalytics.analytics.textarea"
+                className="w-full bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors"
+              />
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="custom-metric-note"
+              className="text-xs text-slate-500 block mb-1"
+            >
+              Note (optional)
+            </label>
+            <input
+              id="custom-metric-note"
+              type="text"
+              placeholder="Plain text note for this metric..."
+              value={newMetricNote}
+              onChange={(e) => setNewMetricNote(e.target.value)}
+              data-ocid="resultsanalytics.analytics.note.input"
+              className="w-full bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+          <div className="bg-slate-800 rounded-lg px-3 py-2 text-xs text-slate-400 space-y-1">
+            <div>
+              <span className="text-slate-300 font-medium">
+                Financial variables:{" "}
+              </span>
+              <span className="text-emerald-400">
+                Revenue, NetProfit, EBITDA, EPS, EbitdaMargin, NpMargin
+              </span>
+              <span className="text-slate-500"> (period averages)</span>
+            </div>
+            <div>
+              <span className="text-slate-300 font-medium">Index: </span>
+              <span className="text-amber-400">NiftyClose</span>
+            </div>
+            <div>
+              <span className="text-slate-300 font-medium">
+                Macro Indicators:{" "}
+              </span>
+              <span className="text-sky-400">
+                MacroCPI (
+                {(
+                  MACRO_CPI_WPI_FULL[MACRO_CPI_WPI_FULL.length - 1]?.cpi ?? 5.2
+                ).toFixed(1)}
+                %), MacroWPI (
+                {(
+                  MACRO_CPI_WPI_FULL[MACRO_CPI_WPI_FULL.length - 1]?.wpi ?? 2.1
+                ).toFixed(1)}
+                %), FIIFlow, MacroDII, MacroUSDINR (
+                {(
+                  MACRO_USDINT_FULL[MACRO_USDINT_FULL.length - 1]?.value ?? 83.5
+                ).toFixed(1)}
+                ), MacroCrudeWTI, MacroCrudeBrent, Macro3YGsec, Macro5YGsec,
+                Macro10YGsec, MacroGDP (
+                {(
+                  MACRO_GDP_CAD_FULL[MACRO_GDP_CAD_FULL.length - 1]?.gdp ?? 7.0
+                ).toFixed(1)}
+                %), MacroRepoRate (
+                {(
+                  MACRO_RATES_FULL[MACRO_RATES_FULL.length - 1]?.repoRate ?? 6.5
+                ).toFixed(2)}
+                %), MacroFXReserve
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-300 font-medium">
+                Index &amp; Stock OI:{" "}
+              </span>
+              <span className="text-emerald-400">
+                {(() => {
+                  const refD = new Date();
+                  const nCM = NIFTY_PCR_OI_FULL.CM;
+                  const bCM = BANKNIFTY_PCR_OI_FULL.CM;
+                  const nPE = getQuarterlyOIValue(nCM, refD, "peOI");
+                  const nCE = getQuarterlyOIValue(nCM, refD, "ceOI");
+                  const nPCR =
+                    getQuarterlyOIValue(nCM, refD, "pcrRatio") ||
+                    +(nPE / (nCE || 1)).toFixed(3);
+                  const bPE = getQuarterlyOIValue(bCM, refD, "peOI");
+                  const bCE = getQuarterlyOIValue(bCM, refD, "ceOI");
+                  const bPCR =
+                    getQuarterlyOIValue(bCM, refD, "pcrRatio") ||
+                    +(bPE / (bCE || 1)).toFixed(3);
+                  const stockOIKey = Object.keys(stockPCROIFullCache).find(
+                    (k) => k === `${sym}_CM` || k.startsWith(`${sym}_`),
+                  );
+                  const sArr = stockOIKey
+                    ? (stockPCROIFullCache[stockOIKey] ?? [])
+                    : [];
+                  const sPE = getQuarterlyOIValue(sArr, refD, "peOI");
+                  const sCE = getQuarterlyOIValue(sArr, refD, "ceOI");
+                  const sPCR =
+                    getQuarterlyOIValue(sArr, refD, "pcrRatio") ||
+                    +(sPE / (sCE || 1)).toFixed(3);
+                  const sData = getStockData(sym);
+                  const sClose = sData[sData.length - 1]?.close ?? 0;
+                  return `NiftyOI_PE (${nPE.toLocaleString()}), NiftyOI_CE (${nCE.toLocaleString()}), NiftyPCR (${nPCR}), BankNiftyOI_PE (${bPE.toLocaleString()}), BankNiftyOI_CE (${bCE.toLocaleString()}), BankNiftyPCR (${bPCR}), StockOI_PE (${sPE.toLocaleString()}), StockOI_CE (${sCE.toLocaleString()}), StockPCR (${sPCR}), StockClose (${sClose.toFixed(0)}), StockVolume`;
+                })()}
+              </span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              data-ocid="stockresults.analytics.save_button"
+              onClick={addCustomMetric}
+              className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+            >
+              Save Metric
+            </button>
+            <button
+              type="button"
+              data-ocid="stockresults.analytics.cancel_button"
+              onClick={() => {
+                setShowAddForm(false);
+                setNewMetricName("");
+                setNewMetricFormula("");
+                setNewMetricNote("");
+              }}
+              className="px-4 py-1.5 text-xs border border-slate-600 text-slate-400 rounded-lg hover:border-slate-500 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Metrics Table */}
+      <div className="overflow-x-auto">
+        <table
+          className="w-full text-xs"
+          data-ocid="stockresults.analytics.table"
+        >
+          <thead>
+            <tr className="bg-slate-900">
+              {[
+                "Metric",
+                "Value",
+                "Description / Formula",
+                "Note",
+                "Actions",
+              ].map((h) => (
+                <th
+                  key={h}
+                  className="text-left px-3 py-2.5 text-slate-400 font-medium border-b border-slate-700"
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {/* Standard (builtin) metrics */}
+            {activeBuiltinMetrics.map((m, i) =>
+              editingIdx?.type === "builtin" && editingIdx.idx === i ? (
+                <tr
+                  key={m.name}
+                  className="bg-slate-800/60"
+                  data-ocid={`stockresults.analytics.row.${i + 1}`}
+                >
+                  <td
+                    className="px-3 py-2 border-b border-slate-800"
+                    colSpan={5}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="bg-slate-700 border border-slate-500 text-slate-200 text-xs rounded px-2 py-1 outline-none w-36"
+                        placeholder="Name"
+                      />
+                      <input
+                        value={editFormula}
+                        onChange={(e) => setEditFormula(e.target.value)}
+                        className="bg-slate-700 border border-slate-500 text-slate-200 text-xs rounded px-2 py-1 outline-none w-52"
+                        placeholder="Formula override (optional)..."
+                      />
+                      <input
+                        value={editNote}
+                        onChange={(e) => setEditNote(e.target.value)}
+                        className="bg-slate-700 border border-slate-500 text-slate-200 text-xs rounded px-2 py-1 outline-none flex-1 min-w-32"
+                        placeholder="Add note..."
+                      />
+                      <button
+                        type="button"
+                        onClick={applyEdit}
+                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingIdx(null)}
+                        className="px-3 py-1 text-xs border border-slate-600 text-slate-400 rounded hover:border-slate-500 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                <tr
+                  key={m.name}
+                  className="hover:bg-slate-700/30 transition-colors"
+                  data-ocid={`stockresults.analytics.row.${i + 1}`}
+                >
+                  <td className="px-3 py-2.5 text-slate-200 border-b border-slate-800 font-medium">
+                    {m.name}
+                  </td>
+                  <td className="px-3 py-2.5 border-b border-slate-800">
+                    {(() => {
+                      try {
+                        const overrideFormula = localStorage.getItem(
+                          `stock_metric_formula_${sym}_${i}`,
+                        );
+                        if (overrideFormula) {
+                          const { value, error } = evalCustomMetric(
+                            overrideFormula,
+                            computeQuarters,
+                            sym,
+                            periodQuarters,
+                          );
+                          if (error)
+                            return (
+                              <span className="text-red-400 text-xs">
+                                {error}
+                              </span>
+                            );
+                          return (
+                            <span
+                              className="font-semibold text-amber-400"
+                              title="Formula override active"
+                            >
+                              {value}{" "}
+                              <span className="text-xs text-amber-600">†</span>
+                            </span>
+                          );
+                        }
+                      } catch {
+                        /* ignore */
+                      }
+                      return (
+                        <span className="font-semibold text-blue-400">
+                          {m.value}
+                        </span>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-500 border-b border-slate-800 max-w-xs">
+                    {(() => {
+                      try {
+                        const overrideFormula = localStorage.getItem(
+                          `stock_metric_formula_${sym}_${i}`,
+                        );
+                        if (overrideFormula)
+                          return (
+                            <span
+                              className="font-mono text-xs text-amber-600/80"
+                              title="Formula override"
+                            >
+                              {overrideFormula}
+                            </span>
+                          );
+                      } catch {
+                        /* ignore */
+                      }
+                      return m.description;
+                    })()}
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-500 border-b border-slate-800 text-xs italic max-w-[120px] truncate">
+                    {/* Saved note if any */}
+                    {(() => {
+                      try {
+                        const arr = JSON.parse(
+                          localStorage.getItem(`stock_metrics_${sym}`) ?? "[]",
+                        );
+                        const found = arr.find(
+                          (e: { type: string; idx: number; note?: string }) =>
+                            e.type === "builtin" && e.idx === i,
+                        );
+                        return found?.note ?? "—";
+                      } catch {
+                        return "—";
+                      }
+                    })()}
+                  </td>
+                  <td className="px-3 py-2.5 border-b border-slate-800">
+                    <div className="flex gap-1.5 justify-end">
+                      <button
+                        type="button"
+                        data-ocid={`resultsanalytics.analytics.save_button.${i + 1}`}
+                        onClick={() =>
+                          saveRowMetric("builtin", i, m.name, "", "")
+                        }
+                        className={`text-xs px-2 py-0.5 rounded border transition-colors ${savedRowIdx === i ? "border-green-700 text-green-400" : "border-slate-600 text-slate-400 hover:border-blue-600 hover:text-blue-400"}`}
+                      >
+                        {savedRowIdx === i ? "✓ Saved" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        data-ocid={`resultsanalytics.analytics.edit_button.${i + 1}`}
+                        onClick={() => startEdit("builtin", i)}
+                        className="text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:border-amber-600 hover:text-amber-400 transition-colors"
+                      >
+                        Modify
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ),
+            )}
+
+            {/* Active global custom metrics */}
+            {activeGlobalMetricsEval.map((m, gi) => {
+              const i = activeBuiltinMetrics.length + gi;
+              return (
+                <tr
+                  key={`global-${m.id}`}
+                  className="hover:bg-slate-700/30 transition-colors"
+                  data-ocid={`stockresults.analytics.custom.row.${gi + 1}`}
+                >
+                  <td className="px-3 py-2.5 text-slate-200 border-b border-slate-800 font-medium">
+                    {m.name}
+                    <span className="ml-2 text-xs text-purple-400 bg-purple-950 px-1.5 py-0.5 rounded">
+                      global
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 border-b border-slate-800">
+                    {m.error ? (
+                      <span className="text-red-400 text-xs">{m.error}</span>
+                    ) : (
+                      <span className="font-semibold text-amber-400">
+                        {m.value}
+                      </span>
+                    )}
+                  </td>
+                  <td
+                    className="px-3 py-2.5 text-slate-500 border-b border-slate-800 font-mono text-xs max-w-xs truncate"
+                    title={m.formula}
+                  >
+                    {m.formula}
+                  </td>
+                  <td
+                    className="px-3 py-2.5 text-slate-500 border-b border-slate-800 text-xs italic max-w-[120px] truncate"
+                    title={m.note}
+                  >
+                    {m.note ?? "—"}
+                  </td>
+                  <td className="px-3 py-2.5 border-b border-slate-800">
+                    <div className="flex gap-1.5 justify-end">
+                      <button
+                        type="button"
+                        data-ocid={`resultsanalytics.analytics.save_button.${i + 1}`}
+                        onClick={() =>
+                          saveRowMetric(
+                            "custom",
+                            gi,
+                            m.name,
+                            m.formula,
+                            m.note ?? "",
+                          )
+                        }
+                        className={`text-xs px-2 py-0.5 rounded border transition-colors ${savedRowIdx === i ? "border-green-700 text-green-400" : "border-slate-600 text-slate-400 hover:border-blue-600 hover:text-blue-400"}`}
+                      >
+                        {savedRowIdx === i ? "✓ Saved" : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeGlobalMetric(m.id)}
+                        className="text-xs px-2 py-0.5 rounded border border-red-900 text-red-500 hover:border-red-700 transition-colors"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+
+            {/* Stock-specific custom metrics */}
+            {customMetrics
+              .filter((m) => !m.isGlobal)
+              .map((m, ci) => {
+                const i =
+                  activeBuiltinMetrics.length +
+                  activeGlobalMetricsEval.length +
+                  ci;
+                return editingIdx?.type === "custom" &&
+                  editingIdx.idx === ci ? (
+                  <tr
+                    key={m.id}
+                    className="bg-slate-800/60"
+                    data-ocid={`stockresults.analytics.custom.row.${activeGlobalMetricsEval.length + ci + 1}`}
+                  >
+                    <td
+                      className="px-3 py-2 border-b border-slate-800"
+                      colSpan={5}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="bg-slate-700 border border-slate-500 text-slate-200 text-xs rounded px-2 py-1 outline-none w-28"
+                          placeholder="Name"
+                        />
+                        <input
+                          value={editFormula}
+                          onChange={(e) => setEditFormula(e.target.value)}
+                          className="bg-slate-700 border border-slate-500 text-slate-200 text-xs rounded px-2 py-1 outline-none w-48"
+                          placeholder="Formula"
+                        />
+                        <input
+                          value={editNote}
+                          onChange={(e) => setEditNote(e.target.value)}
+                          className="bg-slate-700 border border-slate-500 text-slate-200 text-xs rounded px-2 py-1 outline-none flex-1 min-w-28"
+                          placeholder="Note"
+                        />
+                        <button
+                          type="button"
+                          onClick={applyEdit}
+                          className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingIdx(null)}
+                          className="px-3 py-1 text-xs border border-slate-600 text-slate-400 rounded hover:border-slate-500"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr
+                    key={m.id}
+                    className="hover:bg-slate-700/30 transition-colors"
+                    data-ocid={`stockresults.analytics.custom.row.${activeGlobalMetricsEval.length + ci + 1}`}
+                  >
+                    <td className="px-3 py-2.5 text-slate-200 border-b border-slate-800 font-medium">
+                      {m.name}
+                      <span className="ml-2 text-xs text-teal-400 bg-teal-950 px-1.5 py-0.5 rounded">
+                        custom
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 border-b border-slate-800">
+                      {m.error ? (
+                        <span className="text-red-400 text-xs">{m.error}</span>
+                      ) : (
+                        <span className="font-semibold text-amber-400">
+                          {m.value}
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      className="px-3 py-2.5 text-slate-500 border-b border-slate-800 font-mono text-xs max-w-xs truncate"
+                      title={m.formula}
+                    >
+                      {m.formula}
+                    </td>
+                    <td
+                      className="px-3 py-2.5 text-slate-500 border-b border-slate-800 text-xs italic max-w-[120px] truncate"
+                      title={m.note}
+                    >
+                      {m.note ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 border-b border-slate-800">
+                      <div className="flex gap-1.5 justify-end">
+                        <button
+                          type="button"
+                          data-ocid={`resultsanalytics.analytics.save_button.${i + 1}`}
+                          onClick={() =>
+                            saveRowMetric(
+                              "custom",
+                              ci,
+                              m.name,
+                              m.formula,
+                              m.note ?? "",
+                            )
+                          }
+                          className={`text-xs px-2 py-0.5 rounded border transition-colors ${savedRowIdx === i ? "border-green-700 text-green-400" : "border-slate-600 text-slate-400 hover:border-blue-600 hover:text-blue-400"}`}
+                        >
+                          {savedRowIdx === i ? "✓ Saved" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          data-ocid={`resultsanalytics.analytics.edit_button.${i + 1}`}
+                          onClick={() => startEdit("custom", ci)}
+                          className="text-xs px-2 py-0.5 rounded border border-slate-600 text-slate-400 hover:border-amber-600 hover:text-amber-400 transition-colors"
+                        >
+                          Modify
+                        </button>
+                        <button
+                          type="button"
+                          data-ocid={`stockresults.analytics.delete_button.${ci + 1}`}
+                          onClick={() => deleteCustomMetric(m.id)}
+                          className="text-red-500 hover:text-red-400 transition-colors text-xs px-2 py-0.5 rounded border border-red-900 hover:border-red-700"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+            {totalRows === 0 && (
+              <tr>
+                <td
+                  colSpan={5}
+                  data-ocid="stockresults.analytics.empty_state"
+                  className="px-3 py-8 text-center text-slate-500"
+                >
+                  No data available for analytics
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+// ─── Panel 3: Visualization ───────────────────────────────────────────────────
+const CHART_SERIES_COLORS: Record<string, string> = {
+  Revenue: "#3b82f6",
+  NetProfit: "#22c55e",
+  EBITDA: "#f97316",
+  EPS: "#a855f7",
+  EbitdaMargin: "#14b8a6",
+  NpMargin: "#eab308",
+};
+
+// Extra colors for custom series added via condition dropdown
+const EXTRA_CONDITION_COLORS = [
+  "#f43f5e",
+  "#06b6d4",
+  "#84cc16",
+  "#f59e0b",
+  "#8b5cf6",
+  "#ec4899",
+];
+
+type ChartType = "Bar" | "Line" | "Composed";
+
+// Macro series definitions for Visualization Panel
+const MACRO_VIZ_SERIES = [
+  { key: "macro_cpi", label: "CPI (MoM %)", color: "#f59e0b" },
+  { key: "macro_wpi", label: "WPI (MoM %)", color: "#fbbf24" },
+  { key: "macro_fii", label: "FII Flow (Cr)", color: "#f97316" },
+  { key: "macro_dii", label: "DII Flow (Cr)", color: "#fb923c" },
+  { key: "macro_usdinr", label: "USD/INR", color: "#f43f5e" },
+  { key: "macro_wti", label: "Crude WTI", color: "#ec4899" },
+  { key: "macro_brent", label: "Crude Brent", color: "#e879f9" },
+  { key: "macro_gsec10y", label: "G-Sec 10Y", color: "#a78bfa" },
+  { key: "macro_gdp", label: "GDP Growth %", color: "#818cf8" },
+  { key: "macro_repo", label: "Repo Rate", color: "#60a5fa" },
+  { key: "macro_fxres", label: "FX Reserve", color: "#34d399" },
+] as const;
+
+// OI series definitions for Visualization Panel
+const OI_VIZ_SERIES = [
+  {
+    key: "oi_nifty_pcr",
+    label: "Nifty PCR",
+    color: "#22c55e",
+    oiField: "pcrRatio" as const,
+    source: "nifty",
+  },
+  {
+    key: "oi_nifty_pe",
+    label: "Nifty PE OI (right)",
+    color: "#4ade80",
+    oiField: "peOI" as const,
+    source: "nifty",
+  },
+  {
+    key: "oi_nifty_ce",
+    label: "Nifty CE OI (right)",
+    color: "#86efac",
+    oiField: "ceOI" as const,
+    source: "nifty",
+  },
+  {
+    key: "oi_bnk_pcr",
+    label: "BankNifty PCR",
+    color: "#06b6d4",
+    oiField: "pcrRatio" as const,
+    source: "banknifty",
+  },
+  {
+    key: "oi_bnk_pe",
+    label: "BankNifty PE OI (right)",
+    color: "#22d3ee",
+    oiField: "peOI" as const,
+    source: "banknifty",
+  },
+  {
+    key: "oi_bnk_ce",
+    label: "BankNifty CE OI (right)",
+    color: "#67e8f9",
+    oiField: "ceOI" as const,
+    source: "banknifty",
+  },
+  {
+    key: "oi_stock_pcr",
+    label: "Stock PCR",
+    color: "#a855f7",
+    oiField: "pcrRatio" as const,
+    source: "stock",
+  },
+  {
+    key: "oi_stock_pe",
+    label: "Stock PE OI (right)",
+    color: "#c084fc",
+    oiField: "peOI" as const,
+    source: "stock",
+  },
+  {
+    key: "oi_stock_ce",
+    label: "Stock CE OI (right)",
+    color: "#d8b4fe",
+    oiField: "ceOI" as const,
+    source: "stock",
+  },
+  {
+    key: "oi_stock_close",
+    label: "Stock Close (right)",
+    color: "#f472b6",
+    oiField: "pcrRatio" as const,
+    source: "stock_close",
+  },
+  {
+    key: "oi_stock_vol",
+    label: "Stock Volume (right)",
+    color: "#fb7185",
+    oiField: "peOI" as const,
+    source: "stock_vol",
+  },
+] as const;
+
+function VisualizationPanel({ sym }: { sym: string }) {
+  // Generate quarters internally
+  const allQuarters = useMemo(() => genQuarterlyResults(sym), [sym]);
+
+  // --- Period inputs (same as AnalyticsMatrixPanel) ---
+  const [numQuarters, setNumQuarters] = useState<number | "">(20);
+  const [numYears, setNumYears] = useState<number | "">("");
+
+  const periodQuarters: number =
+    numYears !== ""
+      ? Number(numYears) * 4
+      : numQuarters !== ""
+        ? Number(numQuarters)
+        : 20;
+
+  const [selectedSeries, setSelectedSeries] = useState<Record<string, boolean>>(
+    {
+      Revenue: true,
+      NetProfit: true,
+      EBITDA: false,
+      EPS: false,
+    },
+  );
+  const [chartType, setChartType] = useState<ChartType>("Composed");
+
+  // Multi-select conditions panel
+  const [showCondPanel, setShowCondPanel] = useState(false);
+  const condPanelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (
+        condPanelRef.current &&
+        !condPanelRef.current.contains(e.target as Node)
+      )
+        setShowCondPanel(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // Custom series added from condition selection: { key, label, formula, color }
+  const [customConditionSeries, setCustomConditionSeries] = useState<
+    {
+      key: string;
+      label: string;
+      formula: string;
+      color: string;
+      yAxis?: "left" | "right";
+    }[]
+  >([]);
+
+  // Active macro/OI series keys
+  const [activeMacroKeys, setActiveMacroKeys] = useState<Set<string>>(
+    new Set(),
+  );
+  const [activeOIKeys, setActiveOIKeys] = useState<Set<string>>(new Set());
+
+  const display = useMemo(
+    () =>
+      allQuarters
+        .slice(0, Math.min(periodQuarters, allQuarters.length))
+        .reverse(),
+    [allQuarters, periodQuarters],
+  );
+
+  // Get stock OI data for the selected stock
+  const stockOIArr = useMemo((): ExtendedPCRBarData[] => {
+    const k = Object.keys(stockPCROIFullCache).find(
+      (key) => key === `${sym}_CM` || key.startsWith(`${sym}_`),
+    );
+    return k ? (stockPCROIFullCache[k] ?? []) : [];
+  }, [sym]);
+
+  const stockPriceArr = useMemo(() => getStockData(sym), [sym]);
+
+  const chartData = useMemo(
+    () =>
+      display.map((q) => {
+        const base: Record<string, number | string> = {
+          name: q.quarter,
+          Revenue: q.revenue,
+          NetProfit: q.netProfit,
+          EBITDA: q.ebitda,
+          EPS: q.eps,
+          EbitdaMargin: q.ebitdaMargin,
+          NpMargin: q.netProfitMargin,
+        };
+        // Evaluate custom condition series per quarter
+        for (const cs of customConditionSeries) {
+          const { value } = evalCustomMetric(
+            cs.formula,
+            [q],
+            sym,
+            periodQuarters,
+          );
+          base[cs.key] = value ?? 0;
+        }
+        // Macro series: use nearest value to quarter date
+        for (const ms of MACRO_VIZ_SERIES) {
+          if (!activeMacroKeys.has(ms.key)) continue;
+          let val = 0;
+          switch (ms.key) {
+            case "macro_cpi":
+              val = getMacroValueNearDate(
+                MACRO_CPI_WPI_FULL,
+                q.quarterDate,
+                "cpi",
+              );
+              break;
+            case "macro_wpi":
+              val = getMacroValueNearDate(
+                MACRO_CPI_WPI_FULL,
+                q.quarterDate,
+                "wpi",
+              );
+              break;
+            case "macro_fii":
+              val = getMacroValueNearDate(MACRO_FII_FULL, q.quarterDate, "fii");
+              break;
+            case "macro_dii":
+              val = getMacroValueNearDate(MACRO_FII_FULL, q.quarterDate, "dii");
+              break;
+            case "macro_usdinr":
+              val = getMacroValueNearDate(
+                MACRO_USDINT_FULL,
+                q.quarterDate,
+                "value",
+              );
+              break;
+            case "macro_wti":
+              val = getMacroValueNearDate(
+                MACRO_CRUDE_FULL,
+                q.quarterDate,
+                "wti",
+              );
+              break;
+            case "macro_brent":
+              val = getMacroValueNearDate(
+                MACRO_CRUDE_FULL,
+                q.quarterDate,
+                "brent",
+              );
+              break;
+            case "macro_gsec10y":
+              val = getMacroValueNearDate(
+                MACRO_GSEC_FULL,
+                q.quarterDate,
+                "y10",
+              );
+              break;
+            case "macro_gdp":
+              val = getMacroValueNearDate(
+                MACRO_GDP_CAD_FULL,
+                q.quarterDate,
+                "gdp",
+              );
+              break;
+            case "macro_repo":
+              val = getMacroValueNearDate(
+                MACRO_RATES_FULL,
+                q.quarterDate,
+                "repoRate",
+              );
+              break;
+            case "macro_fxres":
+              val = getMacroValueNearDate(
+                MACRO_FXRESERVE_FULL,
+                q.quarterDate,
+                "value",
+              );
+              break;
+          }
+          base[ms.key] = val;
+        }
+        // OI series: aggregate quarterly window
+        for (const os of OI_VIZ_SERIES) {
+          if (!activeOIKeys.has(os.key)) continue;
+          let val = 0;
+          if (os.source === "nifty") {
+            val = getQuarterlyOIValue(
+              NIFTY_PCR_OI_FULL.CM,
+              q.quarterDate,
+              os.oiField,
+            );
+          } else if (os.source === "banknifty") {
+            val = getQuarterlyOIValue(
+              BANKNIFTY_PCR_OI_FULL.CM,
+              q.quarterDate,
+              os.oiField,
+            );
+          } else if (os.source === "stock") {
+            val = getQuarterlyOIValue(stockOIArr, q.quarterDate, os.oiField);
+          } else if (os.source === "stock_close") {
+            // Average close price in the quarter window
+            const m = q.quarterDate.getMonth();
+            const y = q.quarterDate.getFullYear();
+            const rows = stockPriceArr.filter((d) => {
+              const dm = d.date.getMonth();
+              const dy = d.date.getFullYear();
+              return dy === y && (dm === m || dm === m + 1 || dm === m + 2);
+            });
+            val =
+              rows.length > 0
+                ? +(
+                    rows.reduce((s, d) => s + d.close, 0) / rows.length
+                  ).toFixed(2)
+                : (stockPriceArr[stockPriceArr.length - 1]?.close ?? 0);
+          } else if (os.source === "stock_vol") {
+            const m = q.quarterDate.getMonth();
+            const y = q.quarterDate.getFullYear();
+            const rows = stockPriceArr.filter((d) => {
+              const dm = d.date.getMonth();
+              const dy = d.date.getFullYear();
+              return dy === y && (dm === m || dm === m + 1 || dm === m + 2);
+            });
+            val =
+              rows.length > 0
+                ? Math.round(
+                    rows.reduce((s, d) => s + d.volume, 0) / rows.length,
+                  )
+                : 0;
+          }
+          base[os.key] = val;
+        }
+        return base;
+      }),
+    [
+      display,
+      customConditionSeries,
+      activeMacroKeys,
+      activeOIKeys,
+      sym,
+      periodQuarters,
+      stockOIArr,
+      stockPriceArr,
+    ],
+  );
+
+  const financialSeries = useMemo(() => ["Revenue", "NetProfit", "EBITDA"], []);
+  const perShareSeries = useMemo(() => ["EPS"], []);
+  const marginSeries = useMemo(() => ["EbitdaMargin", "NpMargin"], []);
+  const stdAllSeries = useMemo(
+    () => [...financialSeries, ...perShareSeries, ...marginSeries],
+    [financialSeries, perShareSeries, marginSeries],
+  );
+
+  // OI keys that use right axis (large OI values)
+  const oiRightAxisKeys = new Set([
+    "oi_nifty_pe",
+    "oi_nifty_ce",
+    "oi_bnk_pe",
+    "oi_bnk_ce",
+    "oi_stock_pe",
+    "oi_stock_ce",
+    "oi_stock_close",
+    "oi_stock_vol",
+  ]);
+
+  const allSeries = useMemo(
+    () => [
+      ...stdAllSeries,
+      ...customConditionSeries.map((cs) => cs.key),
+      ...[...activeMacroKeys],
+      ...[...activeOIKeys],
+    ],
+    [stdAllSeries, customConditionSeries, activeMacroKeys, activeOIKeys],
+  );
+
+  // Build combined selected + active state
+  const allSelectedSeries: Record<string, boolean> = { ...selectedSeries };
+  for (const cs of customConditionSeries) allSelectedSeries[cs.key] = true;
+  for (const k of activeMacroKeys) allSelectedSeries[k] = true;
+  for (const k of activeOIKeys) allSelectedSeries[k] = true;
+
+  const activeFinancial = financialSeries.filter((s) => allSelectedSeries[s]);
+  const activeEPS = perShareSeries.filter((s) => allSelectedSeries[s]);
+  const activeMargins = marginSeries.filter((s) => allSelectedSeries[s]);
+  const hasActiveMacroOrOI =
+    activeMacroKeys.size > 0 ||
+    activeOIKeys.size > 0 ||
+    customConditionSeries.some((cs) => cs.yAxis === "right");
+  const hasRightAxis = activeMargins.length > 0 || hasActiveMacroOrOI;
+
+  const baseSeriesLabels: Record<string, string> = useMemo(
+    () => ({
+      Revenue: "Revenue (Cr)",
+      NetProfit: "Net Profit (Cr)",
+      EBITDA: "EBITDA (Cr)",
+      EPS: "EPS (₹)",
+      EbitdaMargin: "EBITDA Margin%",
+      NpMargin: "NP Margin%",
+    }),
+    [],
+  );
+
+  const seriesLabels: Record<string, string> = { ...baseSeriesLabels };
+  for (const cs of customConditionSeries) seriesLabels[cs.key] = cs.label;
+  for (const ms of MACRO_VIZ_SERIES) seriesLabels[ms.key] = ms.label;
+  for (const os of OI_VIZ_SERIES) seriesLabels[os.key] = os.label;
+
+  const seriesColors: Record<string, string> = { ...CHART_SERIES_COLORS };
+  for (const cs of customConditionSeries) seriesColors[cs.key] = cs.color;
+  for (const ms of MACRO_VIZ_SERIES) seriesColors[ms.key] = ms.color;
+  for (const os of OI_VIZ_SERIES) seriesColors[os.key] = os.color;
+
+  function getYAxisId(key: string): "left" | "right" {
+    if (marginSeries.includes(key)) return "right";
+    if (activeMacroKeys.has(key)) return "right";
+    if (activeOIKeys.has(key))
+      return oiRightAxisKeys.has(key) ? "right" : "right"; // OI PCR also on right for clarity
+    const cs = customConditionSeries.find((c) => c.key === key);
+    if (cs?.yAxis === "right") return "right";
+    return "left";
+  }
+
+  function renderSeries(key: string) {
+    const color = seriesColors[key] ?? SECTOR_COLORS[0];
+    const yAxisId = getYAxisId(key);
+    const isCustomCondition = customConditionSeries.some(
+      (cs) => cs.key === key,
+    );
+    const isMacroOrOI = activeMacroKeys.has(key) || activeOIKeys.has(key);
+
+    if (chartType === "Bar") {
+      return (
+        <Bar
+          key={key}
+          dataKey={key}
+          name={seriesLabels[key]}
+          fill={color}
+          yAxisId={yAxisId}
+        />
+      );
+    }
+    if (chartType === "Line") {
+      return (
+        <Line
+          key={key}
+          type="monotone"
+          dataKey={key}
+          name={seriesLabels[key]}
+          stroke={color}
+          dot={false}
+          yAxisId={yAxisId}
+        />
+      );
+    }
+    // Composed
+    if (marginSeries.includes(key) || isCustomCondition || isMacroOrOI) {
+      return (
+        <Line
+          key={key}
+          type="monotone"
+          dataKey={key}
+          name={seriesLabels[key]}
+          stroke={color}
+          dot={false}
+          yAxisId={yAxisId}
+          strokeWidth={2}
+        />
+      );
+    }
+    return (
+      <Bar
+        key={key}
+        dataKey={key}
+        name={seriesLabels[key]}
+        fill={color}
+        yAxisId="left"
+      />
+    );
+  }
+
+  const periodLabel =
+    periodQuarters % 4 === 0 ? `${periodQuarters / 4}Y` : `${periodQuarters}Q`;
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-sm font-bold text-slate-100">Visualization</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Last {periodLabel} ({display.length} quarters) — {sym}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Period inputs */}
+          <div className="flex items-center gap-1.5">
+            <label
+              htmlFor="viz-period-quarters"
+              className="text-xs text-slate-400 whitespace-nowrap"
+            >
+              # Quarters
+            </label>
+            <input
+              id="viz-period-quarters"
+              type="number"
+              min={1}
+              max={80}
+              value={numQuarters}
+              data-ocid="resultsanalytics.viz.quarters.input"
+              onChange={(e) => {
+                setNumQuarters(
+                  e.target.value === "" ? "" : Number(e.target.value),
+                );
+                setNumYears("");
+              }}
+              className="w-16 bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+          <span className="text-xs text-slate-600">or</span>
+          <div className="flex items-center gap-1.5">
+            <label
+              htmlFor="viz-period-years"
+              className="text-xs text-slate-400 whitespace-nowrap"
+            >
+              # Years
+            </label>
+            <input
+              id="viz-period-years"
+              type="number"
+              min={1}
+              max={20}
+              value={numYears}
+              data-ocid="resultsanalytics.viz.years.input"
+              onChange={(e) => {
+                setNumYears(
+                  e.target.value === "" ? "" : Number(e.target.value),
+                );
+                setNumQuarters("");
+              }}
+              className="w-16 bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+          <span className="text-xs text-slate-500 bg-slate-900 px-2 py-1 rounded">
+            {periodQuarters}Q / {(periodQuarters / 4).toFixed(1)}Y
+          </span>
+          {/* Chart type toggle */}
+          <div className="flex gap-1">
+            {(["Bar", "Line", "Composed"] as ChartType[]).map((ct) => (
+              <button
+                type="button"
+                key={ct}
+                data-ocid={`stockresults.viz.${ct.toLowerCase()}.toggle`}
+                onClick={() => setChartType(ct)}
+                className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${chartType === ct ? "bg-blue-600 border-blue-600 text-white" : "border-slate-600 text-slate-400 hover:border-blue-500 hover:text-blue-400"}`}
+              >
+                {ct}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Multi-select Conditions Panel */}
+      <div
+        className="flex flex-wrap items-center gap-3 mb-3"
+        ref={condPanelRef}
+      >
+        <div className="relative">
+          <button
+            type="button"
+            data-ocid="resultsanalytics.viz.conditions.panel.toggle"
+            onClick={() => setShowCondPanel((o) => !o)}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-slate-800 border border-slate-600 text-slate-300 rounded-lg hover:border-blue-500 hover:text-blue-400 transition-colors"
+          >
+            Add Conditions ▾
+            {customConditionSeries.length +
+              activeMacroKeys.size +
+              activeOIKeys.size >
+              0 && (
+              <span className="bg-amber-900 text-amber-300 px-1.5 py-0.5 rounded text-xs">
+                {customConditionSeries.length +
+                  activeMacroKeys.size +
+                  activeOIKeys.size}
+              </span>
+            )}
+          </button>
+          {showCondPanel && (
+            <div className="absolute top-9 left-0 z-40 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-80 p-3 space-y-2 max-h-[520px] overflow-y-auto">
+              {/* Standard Series */}
+              <div className="text-xs font-semibold text-slate-400 px-1 mb-1">
+                Standard Series
+              </div>
+              {stdAllSeries.map((s) => (
+                <label
+                  key={s}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700 cursor-pointer transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!selectedSeries[s]}
+                    onChange={(e) =>
+                      setSelectedSeries((prev) => ({
+                        ...prev,
+                        [s]: e.target.checked,
+                      }))
+                    }
+                    className="w-3 h-3 rounded accent-blue-500"
+                  />
+                  <span
+                    className="text-xs"
+                    style={{ color: CHART_SERIES_COLORS[s] ?? "#94a3b8" }}
+                  >
+                    {seriesLabels[s]}
+                  </span>
+                </label>
+              ))}
+
+              {/* Saved Custom Metrics */}
+              {(() => {
+                const globalMetrics = loadGlobalMetrics();
+                if (globalMetrics.length === 0) return null;
+                return (
+                  <>
+                    <div className="text-xs font-semibold text-slate-400 px-1 pt-2 border-t border-slate-700">
+                      Saved Custom Metrics
+                    </div>
+                    {globalMetrics.map((m, gi) => {
+                      const key = `global_${m.id}`;
+                      const isActive = customConditionSeries.some(
+                        (cs) => cs.key === key,
+                      );
+                      return (
+                        <label
+                          key={m.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700 cursor-pointer transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isActive}
+                            onChange={() => {
+                              if (isActive) {
+                                setCustomConditionSeries((prev) =>
+                                  prev.filter((cs) => cs.key !== key),
+                                );
+                              } else {
+                                const color =
+                                  EXTRA_CONDITION_COLORS[
+                                    gi % EXTRA_CONDITION_COLORS.length
+                                  ];
+                                setCustomConditionSeries((prev) => [
+                                  ...prev,
+                                  {
+                                    key,
+                                    label: `${m.name} (global)`,
+                                    formula: m.formula,
+                                    color,
+                                  },
+                                ]);
+                              }
+                            }}
+                            className="w-3 h-3 rounded accent-purple-500"
+                          />
+                          <span className="text-xs text-slate-300">
+                            {m.name}
+                          </span>
+                          <span className="ml-auto text-purple-400 text-xs">
+                            global
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </>
+                );
+              })()}
+
+              {/* Stock-Saved Metrics */}
+              {(() => {
+                try {
+                  const stockSaved: { name: string; formula: string }[] =
+                    JSON.parse(
+                      localStorage.getItem(`stock_metrics_${sym}`) ?? "[]",
+                    ).filter((m: { formula?: string }) => !!m.formula);
+                  if (stockSaved.length === 0) return null;
+                  return (
+                    <>
+                      <div className="text-xs font-semibold text-slate-400 px-1 pt-2 border-t border-slate-700">
+                        Stock-Saved Metrics
+                      </div>
+                      {stockSaved.map((m, si) => {
+                        const key = `saved_${m.name}`;
+                        const isActive = customConditionSeries.some(
+                          (cs) => cs.key === key,
+                        );
+                        return (
+                          <label
+                            key={m.name}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700 cursor-pointer transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isActive}
+                              onChange={() => {
+                                if (isActive) {
+                                  setCustomConditionSeries((prev) =>
+                                    prev.filter((cs) => cs.key !== key),
+                                  );
+                                } else {
+                                  const color =
+                                    EXTRA_CONDITION_COLORS[
+                                      (si + 3) % EXTRA_CONDITION_COLORS.length
+                                    ];
+                                  setCustomConditionSeries((prev) => [
+                                    ...prev,
+                                    {
+                                      key,
+                                      label: `${m.name} (saved)`,
+                                      formula: m.formula,
+                                      color,
+                                    },
+                                  ]);
+                                }
+                              }}
+                              className="w-3 h-3 rounded accent-teal-500"
+                            />
+                            <span className="text-xs text-slate-300">
+                              {m.name}
+                            </span>
+                            <span className="ml-auto text-teal-400 text-xs">
+                              saved
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </>
+                  );
+                } catch {
+                  return null;
+                }
+              })()}
+
+              {/* Macro Indicators Section */}
+              <div className="text-xs font-semibold text-amber-400 px-1 pt-2 border-t border-slate-700">
+                Macro Indicators{" "}
+                <span className="text-slate-500 font-normal">(right axis)</span>
+              </div>
+              {MACRO_VIZ_SERIES.map((ms, mi) => {
+                const isActive = activeMacroKeys.has(ms.key);
+                return (
+                  <label
+                    key={ms.key}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      data-ocid={`resultsanalytics.viz.macro.checkbox.${mi + 1}`}
+                      checked={isActive}
+                      onChange={() => {
+                        setActiveMacroKeys((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(ms.key)) next.delete(ms.key);
+                          else next.add(ms.key);
+                          return next;
+                        });
+                      }}
+                      className="w-3 h-3 rounded accent-amber-500"
+                    />
+                    <span className="text-xs" style={{ color: ms.color }}>
+                      {ms.label}
+                    </span>
+                    {isActive && (
+                      <span className="ml-auto text-amber-500 text-xs">✓</span>
+                    )}
+                  </label>
+                );
+              })}
+
+              {/* Index & Stock OI Section */}
+              <div className="text-xs font-semibold text-emerald-400 px-1 pt-2 border-t border-slate-700">
+                Index &amp; Stock OI{" "}
+                <span className="text-slate-500 font-normal">
+                  (quarterly avg)
+                </span>
+              </div>
+              {OI_VIZ_SERIES.map((os, oi) => {
+                const isActive = activeOIKeys.has(os.key);
+                return (
+                  <label
+                    key={os.key}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-700 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      data-ocid={`resultsanalytics.viz.oi.checkbox.${oi + 1}`}
+                      checked={isActive}
+                      onChange={() => {
+                        setActiveOIKeys((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(os.key)) next.delete(os.key);
+                          else next.add(os.key);
+                          return next;
+                        });
+                      }}
+                      className="w-3 h-3 rounded accent-emerald-500"
+                    />
+                    <span className="text-xs" style={{ color: os.color }}>
+                      {os.label}
+                    </span>
+                    {isActive && (
+                      <span className="ml-auto text-emerald-500 text-xs">
+                        ✓
+                      </span>
+                    )}
+                  </label>
+                );
+              })}
+
+              {/* Clear all */}
+              {customConditionSeries.length +
+                activeMacroKeys.size +
+                activeOIKeys.size >
+                0 && (
+                <div className="pt-2 border-t border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomConditionSeries([]);
+                      setActiveMacroKeys(new Set());
+                      setActiveOIKeys(new Set());
+                      setShowCondPanel(false);
+                    }}
+                    className="w-full text-left px-2 py-1.5 text-xs text-red-400 hover:bg-slate-700 rounded-lg transition-colors"
+                  >
+                    Clear all custom conditions
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        {customConditionSeries.length +
+          activeMacroKeys.size +
+          activeOIKeys.size >
+          0 && (
+          <span className="text-xs text-slate-500">
+            {customConditionSeries.length +
+              activeMacroKeys.size +
+              activeOIKeys.size}{" "}
+            condition
+            {customConditionSeries.length +
+              activeMacroKeys.size +
+              activeOIKeys.size !==
+            1
+              ? "s"
+              : ""}{" "}
+            active
+          </span>
+        )}
+      </div>
+
+      {/* Series checkboxes */}
+      <div className="flex flex-wrap gap-3 mb-4">
+        {stdAllSeries.map((s) => (
+          <label
+            key={s}
+            className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer hover:text-slate-200 transition-colors"
+          >
+            <input
+              type="checkbox"
+              checked={!!selectedSeries[s]}
+              onChange={(e) =>
+                setSelectedSeries((prev) => ({
+                  ...prev,
+                  [s]: e.target.checked,
+                }))
+              }
+              data-ocid={`stockresults.viz.${s.toLowerCase()}.checkbox`}
+              className="w-3 h-3 rounded accent-blue-500"
+            />
+            <span style={{ color: CHART_SERIES_COLORS[s] ?? "#94a3b8" }}>
+              {seriesLabels[s]}
+            </span>
+          </label>
+        ))}
+        {customConditionSeries.map((cs) => (
+          <label
+            key={cs.key}
+            className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer hover:text-slate-200 transition-colors"
+          >
+            <input
+              type="checkbox"
+              checked
+              onChange={() =>
+                setCustomConditionSeries((prev) =>
+                  prev.filter((c) => c.key !== cs.key),
+                )
+              }
+              className="w-3 h-3 rounded accent-blue-500"
+            />
+            <span style={{ color: cs.color }}>{cs.label}</span>
+          </label>
+        ))}
+        {[...activeMacroKeys].map((k) => {
+          const ms = MACRO_VIZ_SERIES.find((m) => m.key === k);
+          if (!ms) return null;
+          return (
+            <label
+              key={k}
+              className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer hover:text-slate-200 transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked
+                onChange={() =>
+                  setActiveMacroKeys((prev) => {
+                    const next = new Set(prev);
+                    next.delete(k);
+                    return next;
+                  })
+                }
+                className="w-3 h-3 rounded accent-amber-500"
+              />
+              <span style={{ color: ms.color }}>{ms.label}</span>
+            </label>
+          );
+        })}
+        {[...activeOIKeys].map((k) => {
+          const os = OI_VIZ_SERIES.find((o) => o.key === k);
+          if (!os) return null;
+          return (
+            <label
+              key={k}
+              className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer hover:text-slate-200 transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked
+                onChange={() =>
+                  setActiveOIKeys((prev) => {
+                    const next = new Set(prev);
+                    next.delete(k);
+                    return next;
+                  })
+                }
+                className="w-3 h-3 rounded accent-emerald-500"
+              />
+              <span style={{ color: os.color }}>{os.label}</span>
+            </label>
+          );
+        })}
+      </div>
+
+      {chartData.length === 0 ? (
+        <div
+          data-ocid="stockresults.viz.empty_state"
+          className="h-64 flex items-center justify-center text-slate-500 text-sm"
+        >
+          No data to visualize
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={340}>
+          <ComposedChart
+            data={chartData}
+            margin={{
+              top: 8,
+              right: hasRightAxis ? 70 : 10,
+              bottom: 0,
+              left: 8,
+            }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis
+              dataKey="name"
+              tick={{ fontSize: 9, fill: "#64748b" }}
+              interval={Math.floor(display.length / 8)}
+            />
+            <YAxis
+              yAxisId="left"
+              orientation="left"
+              tick={{ fontSize: 9, fill: "#64748b" }}
+              tickFormatter={(v: number) =>
+                v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)
+              }
+              width={52}
+              label={{
+                value:
+                  [...activeFinancial, ...activeEPS].length > 0
+                    ? "₹ Cr / ₹"
+                    : "",
+                angle: -90,
+                position: "insideLeft",
+                style: { fill: "#64748b", fontSize: 9 },
+                offset: 10,
+              }}
+            />
+            {hasRightAxis && (
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                tick={{ fontSize: 9, fill: "#64748b" }}
+                tickFormatter={(v: number) => {
+                  if (Math.abs(v) >= 1_000_000)
+                    return `${(v / 1_000_000).toFixed(1)}M`;
+                  if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(0)}K`;
+                  return v.toFixed(1);
+                }}
+                width={52}
+                label={{
+                  value: "Macro/OI/Margin",
+                  angle: 90,
+                  position: "insideRight",
+                  style: { fill: "#64748b", fontSize: 9 },
+                  offset: 10,
+                }}
+              />
+            )}
+            <Tooltip
+              contentStyle={{
+                background: "#1e293b",
+                border: "1px solid #334155",
+                fontSize: 11,
+              }}
+              formatter={(value: number, name: string) => [
+                Math.abs(value) >= 1_000_000
+                  ? `${(value / 1_000_000).toFixed(2)}M`
+                  : marginSeries.includes(name.split(" ")[0]) ||
+                      name.includes("%")
+                    ? `${value.toFixed(2)}%`
+                    : value.toLocaleString("en-IN", {
+                        maximumFractionDigits: 2,
+                      }),
+                name,
+              ]}
+            />
+            <Legend wrapperStyle={{ fontSize: 10, color: "#94a3b8" }} />
+            {allSeries
+              .filter((key) => !!allSelectedSeries[key])
+              .map((key) => renderSeries(key))}
+          </ComposedChart>
+        </ResponsiveContainer>
+      )}
+    </Card>
+  );
+}
+
+// ─── Custom Logic Store ───────────────────────────────────────────────────────
+function CustomLogicStore({ sym }: { sym: string }) {
+  const [logic, setLogic] = useState<string>(() => {
+    try {
+      return localStorage.getItem(`stock_logic_${sym}`) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const [isOpen, setIsOpen] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
+  const [saveCounter, setSaveCounter] = useState(0);
+  const [loadFromSym, setLoadFromSym] = useState("");
+
+  // Count how many symbols have saved logic — re-runs after saves
+  // biome-ignore lint/correctness/useExhaustiveDependencies: saveCounter triggers localStorage re-scan intentionally
+  const savedCount = useMemo(() => {
+    try {
+      let count = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k?.startsWith("stock_logic_")) count++;
+      }
+      return count;
+    } catch {
+      return 0;
+    }
+  }, [saveCounter, sym]);
+
+  // Symbols with saved logic — re-runs after saves
+  // biome-ignore lint/correctness/useExhaustiveDependencies: saveCounter triggers localStorage re-scan intentionally
+  const symsWithLogic = useMemo(() => {
+    try {
+      const result: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k?.startsWith("stock_logic_")) {
+          const s = k.replace("stock_logic_", "");
+          if (s !== sym) result.push(s);
+        }
+      }
+      return result;
+    } catch {
+      return [];
+    }
+  }, [sym, saveCounter]);
+
+  // Auto-load when sym changes
+  useEffect(() => {
+    try {
+      setLogic(localStorage.getItem(`stock_logic_${sym}`) ?? "");
+    } catch {
+      setLogic("");
+    }
+  }, [sym]);
+
+  const saveLogic = () => {
+    try {
+      localStorage.setItem(`stock_logic_${sym}`, logic);
+      setSavedMsg(true);
+      setSaveCounter((c) => c + 1);
+      setTimeout(() => setSavedMsg(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const loadFromOther = (otherSym: string) => {
+    if (!otherSym) return;
+    try {
+      const loaded = localStorage.getItem(`stock_logic_${otherSym}`);
+      if (loaded) setLogic(loaded);
+    } catch {
+      /* ignore */
+    }
+    setLoadFromSym("");
+  };
+
+  return (
+    <Card>
+      <button
+        type="button"
+        data-ocid="stockresults.logic.toggle"
+        onClick={() => setIsOpen((o) => !o)}
+        className="w-full flex items-center justify-between text-sm font-bold text-slate-100"
+      >
+        <div className="flex items-center gap-2">
+          <span>Custom Logic &amp; Notes</span>
+          {savedCount > 0 && (
+            <span className="text-xs bg-purple-950 text-purple-400 border border-purple-800 px-2 py-0.5 rounded-full">
+              Logic saved for {savedCount} stock{savedCount !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+        <span className="text-slate-500 text-xs">
+          {isOpen ? "▲ Collapse" : "▼ Expand"}
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="mt-4 space-y-3">
+          <div className="text-xs text-slate-500">
+            Write custom JS/Python-style formulas, notes, and logic for{" "}
+            <span className="text-blue-400 font-medium">{sym}</span>. Logic is
+            saved per-stock in your browser.
+          </div>
+
+          <textarea
+            value={logic}
+            onChange={(e) => setLogic(e.target.value)}
+            data-ocid="stockresults.logic.textarea"
+            placeholder={`// Custom logic for ${sym}\n// Example:\n// const peRatio = Revenue / NetProfit;\n// const growthScore = (revCAGR + npCAGR) / 2;\n// Logic is stored per-stock and can be recalled across stocks`}
+            rows={10}
+            className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs font-mono rounded-lg px-3 py-2.5 outline-none focus:border-blue-500 transition-colors resize-y"
+          />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              data-ocid="stockresults.logic.save_button"
+              onClick={saveLogic}
+              className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+            >
+              {savedMsg ? "✓ Saved!" : "Save Logic"}
+            </button>
+
+            {symsWithLogic.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">Load from:</span>
+                <select
+                  value={loadFromSym}
+                  onChange={(e) => loadFromOther(e.target.value)}
+                  data-ocid="stockresults.logic.select"
+                  className={`${selectCls} text-xs`}
+                >
+                  <option value="">-- Select stock --</option>
+                  {symsWithLogic.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ─── Main Tab Component ───────────────────────────────────────────────────────
+function TabStockResults() {
+  const [sym, setSym] = useState("RELIANCE");
+  const allQuarters = useMemo(() => genQuarterlyResults(sym), [sym]);
+
+  return (
+    <div className="space-y-4" data-ocid="stockresults.page">
+      {/* Stock Selector */}
+      <Card className="p-0">
+        <StockResultsSearch value={sym} onChange={setSym} />
+        <div className="px-4 py-3 flex flex-wrap gap-3 items-center border-t border-slate-700">
+          <div className="text-xs text-slate-500">
+            <span className="text-slate-300 font-medium">{sym}</span>
+            {" — "}
+            <span className="text-slate-400">
+              {allQuarters.length} quarters of financial data
+              {allQuarters.length > 0 &&
+                ` (${allQuarters[allQuarters.length - 1].quarter} – ${allQuarters[0].quarter})`}
+            </span>
+          </div>
+          <IndexMembershipBadges sym={sym} />
+        </div>
+      </Card>
+
+      {/* Panel 1: Analytics Matrix */}
+      <AnalyticsMatrixPanel sym={sym} />
+
+      {/* Panel 2: Visualization */}
+      <VisualizationPanel sym={sym} />
+
+      {/* Custom Logic Store */}
+      <CustomLogicStore sym={sym} />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ROOT APP
 // ═══════════════════════════════════════════════════════════════════════════════
 const TABS = [
   { label: "Analysis", comp: <TabAnalysis /> },
   { label: "Index & Index Options OI", comp: <TabIndex /> },
   { label: "Stocks & Stocks Options OI", comp: <TabStocks /> },
+  { label: "Results & Analytics", comp: <TabStockResults /> },
   { label: "Macro Indicators", comp: <TabMacro /> },
   { label: "Fortnightly Sector Wise FII Data", comp: <TabSectorFII /> },
   { label: "Indices and Sectors", comp: <TabIndicesSectors /> },
