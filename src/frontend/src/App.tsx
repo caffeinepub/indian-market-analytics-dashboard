@@ -1,3 +1,9 @@
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Info } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
@@ -95,6 +101,8 @@ function genDatesRange(fromDate: Date, toDate: Date): Date[] {
 }
 
 // ─── OHLC SERIES FROM DATE RANGE WITH SEEDED RNG ─────────────────────────────
+// NOTE: All generated price/volume data is DUMMY PLACEHOLDER data.
+// Replace with real NSE OHLC data feed when available.
 function genPriceSeriesRange(
   fromDate: Date,
   toDate: Date,
@@ -128,6 +136,36 @@ function genPriceSeriesRange(
     });
   }
   return result;
+}
+
+// Generates OHLC + Volume for index series (Nifty50, BankNifty).
+// Volume is in number of shares/units traded; scale appropriate for NSE indices.
+// NOTE: DUMMY PLACEHOLDER — replace with real NSE index OHLC+Volume data when available.
+function genIndexSeriesRange(
+  fromDate: Date,
+  toDate: Date,
+  startPrice: number,
+  endPrice: number,
+  volatilityPct: number,
+  seed: number,
+  baseVolMin: number,
+  baseVolMax: number,
+): OHLCWithVolume[] {
+  const ohlc = genPriceSeriesRange(
+    fromDate,
+    toDate,
+    startPrice,
+    endPrice,
+    volatilityPct,
+    seed,
+  );
+  const volRng = mulberry32(seed + 7);
+  const baseVol = baseVolMin + volRng() * (baseVolMax - baseVolMin);
+  return ohlc.map((d) => ({
+    ...d,
+    // Volume varies 50%–200% of base, with slight trend correlation
+    volume: Math.round(baseVol * (0.5 + volRng() * 1.5)),
+  }));
 }
 
 function genDates(days: number, toDate = new Date("2026-03-03")): Date[] {
@@ -167,13 +205,18 @@ interface ExtendedPCRBarData extends PCRBarData {
   month: number;
 }
 
-// Extended PCR OI generator with year+month fields for filtering
-// Generates ~1500 trading days (~6 years) back from 2026-03-03
-function genPCROIDataFull(n: number): ExtendedPCRBarData[] {
-  const dates = genDates(n);
+// Extended PCR OI generator with year+month fields for filtering.
+// Generates all trading days from OI_START_DATE (2020-01-02) to PRICE_END_DATE.
+// NOTE: DUMMY PLACEHOLDER — replace with real NSE Options OI + PCR data when available.
+// Data coverage: 1st Jan 2020 (or earliest available) → present.
+const OI_START_DATE = new Date("2020-01-02");
+function genPCROIDataFull(seed?: number): ExtendedPCRBarData[] {
+  const dates = genDatesRange(OI_START_DATE, PRICE_END_DATE);
+  // Use seeded RNG so each expiry/stock gets consistent but distinct data
+  const rng = seed !== undefined ? mulberry32(seed) : Math.random.bind(Math);
   let pcr = 0.9;
   return dates.map((d) => {
-    pcr = Math.max(0.5, Math.min(1.8, pcr + (Math.random() - 0.49) * 0.06));
+    pcr = Math.max(0.5, Math.min(1.8, pcr + (rng() - 0.49) * 0.06));
     const ceOI = rndi(8_000_000, 25_000_000);
     const peOI = Math.round(ceOI * pcr);
     return {
@@ -188,36 +231,47 @@ function genPCROIDataFull(n: number): ExtendedPCRBarData[] {
 }
 
 // ─── PRECOMPUTED INDEX DATA ────────────────────────────────────────────────────
+// NOTE: All data below is DUMMY PLACEHOLDER data to be replaced with real NSE data.
+// OHLC+Volume coverage: 1st Jan 2005 (or earliest available) → present.
+// Options OI+PCR coverage: 1st Jan 2020 (or earliest available) → present.
 const PRICE_START_DATE = new Date("2005-01-03");
-const PRICE_END_DATE = new Date("2026-03-03");
+const PRICE_END_DATE = new Date("2026-03-07");
 
-const NIFTY_DATA: OHLC[] = genPriceSeriesRange(
+// Nifty50 daily OHLC + Volume (dummy — 2005-01-03 to present)
+// Base volume range: 50M–500M (approximate NSE index-level daily volume units)
+const NIFTY_DATA: OHLCWithVolume[] = genIndexSeriesRange(
   PRICE_START_DATE,
   PRICE_END_DATE,
   2050,
   22800,
   0.012,
   42,
+  50_000_000,
+  500_000_000,
 );
-const BANKNIFTY_DATA: OHLC[] = genPriceSeriesRange(
+// BankNifty daily OHLC + Volume (dummy — 2005-01-03 to present)
+const BANKNIFTY_DATA: OHLCWithVolume[] = genIndexSeriesRange(
   PRICE_START_DATE,
   PRICE_END_DATE,
   7200,
   48500,
   0.018,
   99,
+  30_000_000,
+  300_000_000,
 );
 
-// Full history PCR OI (2020-01 → 2026-03, ~1500 trading days)
+// Full history Options OI + PCR (dummy — 2020-01-02 to present, all trading days)
+// NOTE: Replace with real NSE Options OI data when available.
 const NIFTY_PCR_OI_FULL: Record<string, ExtendedPCRBarData[]> = {
-  CW: genPCROIDataFull(1500),
-  NW: genPCROIDataFull(1500),
-  CM: genPCROIDataFull(1500),
-  NM: genPCROIDataFull(1500),
+  CW: genPCROIDataFull(1001),
+  NW: genPCROIDataFull(1002),
+  CM: genPCROIDataFull(1003),
+  NM: genPCROIDataFull(1004),
 };
 const BANKNIFTY_PCR_OI_FULL: Record<string, ExtendedPCRBarData[]> = {
-  CM: genPCROIDataFull(1500),
-  NM: genPCROIDataFull(1500),
+  CM: genPCROIDataFull(2001),
+  NM: genPCROIDataFull(2002),
 };
 
 // ─── NIFTY TOTAL MARKET STOCKS (from CSV) ───────────────────────────────────────
@@ -1309,6 +1363,9 @@ const STOCK_IPO_YEAR: Record<string, number> = {
   WEBELSOLAR: 2024,
 };
 
+// Stock daily OHLC + Volume cache.
+// NOTE: DUMMY PLACEHOLDER — replace with real NSE equity OHLC+Volume data when available.
+// Data coverage: 1st Jan 2005 (or IPO date if later) → present.
 const stockDataCache: Record<string, OHLCWithVolume[]> = {};
 function getStockData(sym: string): OHLCWithVolume[] {
   if (!stockDataCache[sym]) {
@@ -1347,11 +1404,17 @@ function getStockData(sym: string): OHLCWithVolume[] {
   return stockDataCache[sym];
 }
 
+// Stock OI+PCR cache: dummy data from 2020-01-02 → present for each symbol+expiry.
+// NOTE: DUMMY PLACEHOLDER — replace with real NSE Options OI + PCR data when available.
+// Data coverage: 1st Jan 2020 (or earliest available) → present.
 const stockPCROIFullCache: Record<string, ExtendedPCRBarData[]> = {};
 function getStockPCROIFull(sym: string, expiry: string): ExtendedPCRBarData[] {
   const key = `${sym}_${expiry}_full`;
-  if (!stockPCROIFullCache[key])
-    stockPCROIFullCache[key] = genPCROIDataFull(1500);
+  if (!stockPCROIFullCache[key]) {
+    // Use a seeded RNG derived from symbol+expiry for reproducible but distinct data
+    const seed = symSeed(`${sym}_${expiry}_oi`);
+    stockPCROIFullCache[key] = genPCROIDataFull(seed);
+  }
   return stockPCROIFullCache[key];
 }
 
@@ -4560,6 +4623,63 @@ function Card({
   );
 }
 
+// ─── PANEL INFO ICON ─────────────────────────────────────────────────────────
+// Renders a small ⓘ button. On click shows a Popover with panel description.
+function PanelInfoIcon({
+  ocid,
+  title,
+  description,
+  params,
+}: {
+  ocid: string;
+  title: string;
+  description: string;
+  params?: string[];
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-ocid={ocid}
+          aria-label={`Info: ${title}`}
+          className="h-5 w-5 flex items-center justify-center rounded-full text-slate-500 hover:text-blue-400 hover:bg-slate-700 transition-colors flex-shrink-0"
+        >
+          <Info className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        align="end"
+        className="max-w-xs p-3 bg-slate-900 border border-slate-700 shadow-xl rounded-xl text-left"
+      >
+        <p className="text-xs font-bold text-slate-100 mb-1.5">{title}</p>
+        <p className="text-xs text-slate-400 leading-relaxed mb-2">
+          {description}
+        </p>
+        {params && params.length > 0 && (
+          <>
+            <p className="text-xs font-semibold text-slate-300 mb-1">
+              Parameters:
+            </p>
+            <ul className="space-y-0.5">
+              {params.map((p) => (
+                <li
+                  key={p}
+                  className="text-xs text-slate-400 flex items-start gap-1.5"
+                >
+                  <span className="text-blue-500 mt-px flex-shrink-0">•</span>
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function StatBadge({
   label,
   value,
@@ -5210,9 +5330,22 @@ function TabAnalysis() {
       {/* Python Analysis Workspace */}
       <Card>
         <div className="flex flex-wrap items-center gap-3 mb-4">
-          <h2 className="text-sm font-bold text-slate-100">
-            Python Analysis Workspace
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-100">
+              Python Analysis Workspace
+            </h2>
+            <PanelInfoIcon
+              ocid="analysis.python.info_button"
+              title="Python Analysis Panel"
+              description="Displays a code editor for writing Python analysis scripts. Connects to data from all other tabs (Index OI, Stocks OI, Macro Indicators, FII Data). Use pandas, numpy, scipy, and custom indicators."
+              params={[
+                "Language selector — choose Python or other supported languages",
+                "Seed from Database — load data into analysis context",
+                "Run Analysis — execute script against connected data",
+                "Results pane — output from last run appears here",
+              ]}
+            />
+          </div>
           <span className="bg-blue-950 text-blue-300 text-xs px-2.5 py-1 rounded-full font-medium border border-blue-800">
             Integration Ready
           </span>
@@ -5274,9 +5407,21 @@ def detect_regime(gsec_10y, usd_inr):
       {/* Data Source Status */}
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <h2 className="text-sm font-bold text-slate-100">
-            Data Source Status
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-100">
+              Data Source Status
+            </h2>
+            <PanelInfoIcon
+              ocid="analysis.datasource.info_button"
+              title="Data Source Status Panel"
+              description="Shows the connection and data availability status for all five data sources used in analysis: Index OI, Stocks OI, Macro Indicators, FII Sector Data, and Stock Results."
+              params={[
+                "Seed from Database — import real data from a connected database",
+                "Status column — shows Live, Mock, or Pending for each source",
+                "Last Updated column — timestamp of the most recent data load",
+              ]}
+            />
+          </div>
           <button
             type="button"
             disabled
@@ -5347,7 +5492,7 @@ function IndexPricePanel({
   indexName,
   rawData,
   ocidPrefix,
-}: { indexName: string; rawData: OHLC[]; ocidPrefix: string }) {
+}: { indexName: string; rawData: OHLCWithVolume[]; ocidPrefix: string }) {
   const [tf, setTf] = useState("1D");
   const [visibleCount, setVisibleCount] = useState(60);
   const [avgDays] = useState(20);
@@ -5363,17 +5508,19 @@ function IndexPricePanel({
     const m = TF_MULTIPLIERS[tf] ?? 1;
     if (m <= 1) return rawData.slice(-visibleCount);
     const daily = rawData.slice(-Math.ceil(visibleCount / m));
-    const expanded: OHLC[] = [];
+    const expanded: OHLCWithVolume[] = [];
     for (const d of daily) {
       const count = Math.round(m);
       for (let i = 0; i < count; i++) {
         const noise = d.close * 0.0005;
+        // For intraday bars, split volume evenly across sub-bars
         expanded.push({
           date: new Date(d.date.getTime() + i * 5 * 60000),
           open: d.open + (Math.random() - 0.5) * noise * 2,
           high: d.high - Math.random() * noise,
           low: d.low + Math.random() * noise,
           close: d.close + (Math.random() - 0.5) * noise * 2,
+          volume: Math.round(d.volume / count),
         });
       }
     }
@@ -5381,16 +5528,14 @@ function IndexPricePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawData, tf, visibleCount]);
 
-  // Combined candle + volume data (simulate volume for index)
+  // Combined candle + volume data — uses seeded volume from rawData
   const combinedData: CandleWithVolume[] = useMemo(() => {
     return candles.map((d, i) => {
-      const vol = rndi(50_000_000, 200_000_000);
-      const slicedVols = candles
-        .slice(0, i + 1)
-        .map(() => rndi(50_000_000, 200_000_000));
+      const vol = d.volume;
       const from = Math.max(0, i - avgDays + 1);
       const avgVol = Math.round(
-        slicedVols.slice(from).reduce((s, v) => s + v, 0) / (i - from + 1),
+        candles.slice(from, i + 1).reduce((s, c) => s + c.volume, 0) /
+          (i - from + 1),
       );
       return {
         date: formatDate(d.date),
@@ -5413,7 +5558,21 @@ function IndexPricePanel({
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h2 className="text-sm font-bold text-slate-100">{indexName}</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold text-slate-100">{indexName}</h2>
+          <PanelInfoIcon
+            ocid={`${ocidPrefix}.price.info_button`}
+            title={`${indexName} Price & Volume Panel`}
+            description={`Shows ${indexName} index price as OHLC candlestick chart with volume histogram. Green candle = Close > Open; Red candle = Close < Open. Volume bars on left axis, price candles on right axis.`}
+            params={[
+              "Timeframe toggle — 5min / 15min / 30min / 75min / 1D / 1W",
+              "Zoom In / Zoom Out buttons — narrow or widen the visible range",
+              "Scroll-wheel zoom — pinch or scroll to zoom the chart",
+              "Moving average days — configures the volume MA line",
+              "Data: daily OHLC + volume from Jan 2005 (dummy placeholder)",
+            ]}
+          />
+        </div>
         <ZoomControls
           count={visibleCount}
           setCount={setVisibleCount}
@@ -5516,10 +5675,25 @@ function IndexOIPanel({
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-bold text-slate-100">
-            {indexName} OI Data
-          </h2>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-100">
+              {indexName} OI Data
+            </h2>
+            <PanelInfoIcon
+              ocid={`${ocidPrefix}.oi.info_button`}
+              title={`${indexName} OI Data Panel`}
+              description={`Shows ${indexName} Options OI: PCR Ratio line chart (left axis) and PE/CE Open Interest histograms (right axis) on a single combined chart. PE OI in green, CE OI in red. Multiple expiry selections sum PCR and OI for the same day.`}
+              params={[
+                "Expiry multi-select — CW/NW/CM/NM (Nifty50) or CM/NM (BankNifty); sums data when multiple selected",
+                "Year dropdown — filter from 2020 to present",
+                "Month dropdown — select display month anchor",
+                "Display window: selected month + preceding 3 months",
+                "Market period label — shows active Wed-Tue or Fri-Thu regime",
+                "Data: daily Options OI + PCR from Jan 2020 (dummy placeholder)",
+              ]}
+            />
+          </div>
           <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-medium">
             Lot Size: {lotSize.toLocaleString()}
           </span>
@@ -5726,9 +5900,24 @@ function StockPricePanel({ sym }: { sym: string }) {
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h2 className="text-sm font-bold text-slate-100">
-          {sym} — Price & Volume
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold text-slate-100">
+            {sym} — Price & Volume
+          </h2>
+          <PanelInfoIcon
+            ocid="stock.price.info_button"
+            title="Stock Price & Volume Panel"
+            description="Shows the selected Nifty Total Market stock's OHLC candlestick chart with volume histogram. Displays index membership badges. Green candle = Close > Open; Red candle = Close < Open. Volume bars on left axis, price candles on right axis."
+            params={[
+              "Stock selector — searchable dropdown of 750 Nifty Total Market stocks",
+              "Timeframe toggle — 5min / 15min / 30min / 75min / 1D / 1W",
+              "Zoom In / Zoom Out buttons — narrow or widen the visible range",
+              "MA days input — number of days for volume moving average",
+              "Index membership badges — shows all indices the stock belongs to",
+              "Data: daily OHLC + volume from Jan 2005 or IPO date (dummy placeholder)",
+            ]}
+          />
+        </div>
         <ZoomControls
           count={visibleCount}
           setCount={setVisibleCount}
@@ -5877,8 +6066,26 @@ function StockOIPanel({ sym }: { sym: string }) {
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-bold text-slate-100">{sym} — OI Data</h2>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-100">
+              {sym} — OI Data
+            </h2>
+            <PanelInfoIcon
+              ocid="stock.oi.info_button"
+              title="Stock OI Data Panel"
+              description="Shows the selected stock's Options OI: PCR Ratio line chart (left axis) and PE/CE Open Interest histograms (right axis) combined. PE OI in green, CE OI in red. If the stock has no options, shows an error message."
+              params={[
+                "Expiry multi-select — CM (Current Month) / NM (Next Month)",
+                "Year dropdown — filter from 2020 to present",
+                "Month dropdown — select display month anchor",
+                "Display window: selected month + preceding 3 months",
+                "Lot size badge — shows contract lot size for this symbol",
+                "Shows 'The script does not have Options' for non-options stocks",
+                "Data: daily Options OI + PCR from Jan 2020 (dummy placeholder)",
+              ]}
+            />
+          </div>
           {lotSize !== undefined && (
             <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-medium">
               Lot Size: {lotSize.toLocaleString()}
@@ -6199,8 +6406,22 @@ function DailyIndicatorsCard() {
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div>
+        <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold text-slate-100">Daily Indicators</h2>
+          <PanelInfoIcon
+            ocid="macro.daily.info_button"
+            title="Daily Indicators Panel"
+            description="Shows daily macroeconomic data series with left/right arrow navigation. Supports touch/swipe. All calendar days included — no trading day filter applies."
+            params={[
+              "USD/INR — exchange rate line chart",
+              "FII + DII — institutional flows as histogram (both together)",
+              "Crude Oil — WTI & Brent price histogram (both together)",
+              "G-Sec Yields — 3Y / 5Y / 10Y government bond yield lines (all together)",
+              "Custom date picker — sets the anchor date for the 12-month window",
+              "Prev / Next arrows — shift the 12-month window earlier or later",
+              "Touch/swipe — swipe left/right on mobile to navigate",
+            ]}
+          />
         </div>
         <WindowNav
           label={rangeLabel}
@@ -6496,10 +6717,23 @@ function MoMIndicatorsCard() {
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div>
+        <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold text-slate-100">
             Month-on-Month (MoM) Indicators
           </h2>
+          <PanelInfoIcon
+            ocid="macro.mom.info_button"
+            title="MoM Indicators Panel"
+            description="Shows month-on-month macroeconomic data with left/right navigation. All calendar days included. Supports touch/swipe on mobile."
+            params={[
+              "CPI + WPI — Consumer & Wholesale Price Index MoM % (line chart, both together)",
+              "Auto Sales + GST Collections — MoM data (line, dual-axis)",
+              "Manufacturing PMI + Services PMI — India PMI indices (line, both together)",
+              "FX Reserve — Foreign Exchange Reserves (line chart)",
+              "Custom date picker — sets the anchor date for the 60-month window",
+              "Prev / Next arrows — shift the 60-month window earlier or later",
+            ]}
+          />
         </div>
         <WindowNav
           label={rangeLabel}
@@ -6777,10 +7011,21 @@ function QoQIndicatorsCard() {
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div>
+        <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold text-slate-100">
             Quarter-on-Quarter (QoQ) Indicators
           </h2>
+          <PanelInfoIcon
+            ocid="macro.qoq.info_button"
+            title="QoQ Indicators Panel"
+            description="Shows quarter-on-quarter macroeconomic data with left/right navigation. All calendar days included. Supports touch/swipe on mobile."
+            params={[
+              "GDP + CAD% of GDP — GDP growth % (histogram, left axis) and CAD as % of GDP (line, right axis)",
+              "Interest Rates + FX Reserve — Repo Rate and FX Reserve (line chart, dual-axis)",
+              "Custom date picker — sets the anchor date for the 40-quarter window",
+              "Prev / Next arrows — shift the 40-quarter window earlier or later",
+            ]}
+          />
         </div>
         <WindowNav
           label={rangeLabel}
@@ -7046,9 +7291,23 @@ function SectorFIIPanel({
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h2 className="text-sm font-bold text-slate-100">
-          Sector FII Flows (Fortnightly)
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold text-slate-100">
+            Sector FII Flows (Fortnightly)
+          </h2>
+          <PanelInfoIcon
+            ocid="sector.fii.chart.info_button"
+            title="Sector FII Line Chart Panel"
+            description="Multi-line chart showing fortnightly FII flow data across 24 FII sectors over 12 fortnights. Each sector is shown in a distinct color with a legend."
+            params={[
+              "Sector checkboxes — select/deselect individual sectors to show/hide on chart",
+              "Select All — enables all 24 sectors simultaneously",
+              "Clear All — removes all sector selections from the chart",
+              "Color legend — each sector has a unique color for identification",
+              "Data: fortnightly FII institutional flow values (dummy placeholder)",
+            ]}
+          />
+        </div>
         <div className="flex gap-2">
           <button
             type="button"
@@ -7165,9 +7424,23 @@ function SectorStocksPanel({ selectedSectors }: { selectedSectors: string[] }) {
   }, [activeSector]);
   return (
     <Card>
-      <h2 className="text-sm font-bold text-slate-100 mb-3">
-        Stocks in Selected Sectors
-      </h2>
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="text-sm font-bold text-slate-100">
+          Stocks in Selected Sectors
+        </h2>
+        <PanelInfoIcon
+          ocid="sector.stocks.info_button"
+          title="Sector Stocks Table Panel"
+          description="Lists all constituent stocks for the selected sectors with FII holding data. Updates automatically when the sector selection changes in the chart panel above."
+          params={[
+            "Sector tabs — click to switch between selected sectors",
+            "FII Holding % — percentage of shares held by Foreign Institutional Investors",
+            "Change (FN) — FII holding change in the most recent fortnight (green = increase, red = decrease)",
+            "Net FII Flow (₹ Cr) — net FII flow in crore rupees for the fortnight",
+            "Data: fortnightly FII holding data (dummy placeholder)",
+          ]}
+        />
+      </div>
       {selectedSectors.length === 0 ? (
         <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
           Select sectors from the chart above
@@ -7371,7 +7644,22 @@ function TabIndicesSectors() {
         {/* Nifty Sectors group */}
         <Card>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold text-slate-100">Nifty Indices</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-100">
+                Nifty Indices
+              </h2>
+              <PanelInfoIcon
+                ocid="indices.nifty.info_button"
+                title="Nifty Indices Panel"
+                description="Multi-select panel listing 25 Nifty indices including NIFTY 50, BANK NIFTY, NIFTY NEXT 50, and sectoral/thematic indices. Select one or more to view their constituent stocks in the right panel."
+                params={[
+                  "Index checkboxes — select/deselect indices; click a selected badge to switch constituent view",
+                  "Select All — selects all 25 Nifty indices",
+                  "Clear — removes all Nifty index selections",
+                  "Data sourced from uploaded CSV (Nifty Total Market constituents)",
+                ]}
+              />
+            </div>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -7438,7 +7726,20 @@ function TabIndicesSectors() {
         {/* FII Sectors group */}
         <Card>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold text-slate-100">FII Sectors</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-100">FII Sectors</h2>
+              <PanelInfoIcon
+                ocid="indices.fii.info_button"
+                title="FII Sectors Panel"
+                description="Multi-select panel listing 24 FII classification sectors used for institutional investor tracking. Select one or more to view their constituent stocks in the right panel."
+                params={[
+                  "Sector checkboxes — select/deselect FII sectors; click a selected badge to switch constituent view",
+                  "Select All — selects all 24 FII sectors",
+                  "Clear — removes all FII sector selections",
+                  "Covers: Automobile, Capital Goods, Chemicals, Construction, Consumer Durables/Services, Financial Services, FMCG, Healthcare, IT, Media, Metals, Oil & Gas, Power, Realty, Telecom, Textiles, Utilities, Sovereign, and Others",
+                ]}
+              />
+            </div>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -7506,9 +7807,23 @@ function TabIndicesSectors() {
       {/* ── Right Panel: Constituent Companies ── */}
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <h2 className="text-sm font-bold text-slate-100">
-            Constituent Companies
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-100">
+              Constituent Companies
+            </h2>
+            <PanelInfoIcon
+              ocid="indices.constituents.info_button"
+              title="Constituents Panel"
+              description="Shows all constituent stocks for the currently selected index or FII sector. Click any selected index/sector badge at the top to switch the constituent view."
+              params={[
+                "Index/sector tabs — click to switch between selected indices and sectors",
+                "Stock symbols — displays NSE ticker symbols for all constituents",
+                "Index membership badges — shows all indices each stock belongs to",
+                "Type badge — indicates whether the selection is a Nifty index or FII sector",
+                "Data sourced from uploaded CSV (Nifty Total Market constituents)",
+              ]}
+            />
+          </div>
           {allSelected.length > 0 && (
             <div
               className="flex flex-wrap gap-1"
@@ -7945,6 +8260,29 @@ function getQuarterlyOIValue(
     : Math.round(sum / rows.length);
 }
 
+// Helper: average the daily close prices for an index within a quarter window
+function getIndexCloseForPeriod(
+  data: OHLCWithVolume[],
+  quarterDate: Date,
+  _periodQuarters: number,
+): number {
+  const endDate = quarterDate;
+  const startDate = new Date(quarterDate);
+  startDate.setMonth(startDate.getMonth() - 3);
+  const rows = data.filter((d) => d.date >= startDate && d.date <= endDate);
+  if (rows.length === 0) {
+    if (data.length === 0) return 0;
+    const nearest = data.reduce((best, d) => {
+      return Math.abs(d.date.getTime() - quarterDate.getTime()) <
+        Math.abs(best.date.getTime() - quarterDate.getTime())
+        ? d
+        : best;
+    }, data[0]);
+    return nearest?.close ?? 0;
+  }
+  return +(rows.reduce((s, d) => s + d.close, 0) / rows.length).toFixed(2);
+}
+
 // Helper: get macro value closest to a date from a time-series
 function getMacroValueNearDate<T extends { date: string | Date }>(
   arr: T[],
@@ -7986,8 +8324,10 @@ function evalCustomMetric(
   const avgNpMargin =
     recent.reduce((s, q) => s + q.netProfitMargin, 0) / recent.length;
 
-  // Real macro values pulled from live data arrays
-  const NiftyClose = NIFTY_DATA[NIFTY_DATA.length - 1]?.close ?? 22000;
+  // Real macro values pulled from live data arrays — NiftyClose/BankNiftyClose are averaged
+  // over the selected period (most recent quarter window) for meaningful comparison
+  const refDate = recent[0]?.quarterDate ?? new Date();
+  const NiftyClose = getIndexCloseForPeriod(NIFTY_DATA, refDate, maxPeriod);
   const MacroCPI =
     MACRO_CPI_WPI_FULL[MACRO_CPI_WPI_FULL.length - 1]?.cpi ?? 5.2;
   const MacroWPI =
@@ -8010,6 +8350,13 @@ function evalCustomMetric(
   const MacroFXReserve =
     MACRO_FXRESERVE_FULL[MACRO_FXRESERVE_FULL.length - 1]?.value ?? 650;
 
+  // BankNiftyClose: period-averaged closing value of BankNifty index
+  const BankNiftyClose = getIndexCloseForPeriod(
+    BANKNIFTY_DATA,
+    refDate,
+    maxPeriod,
+  );
+
   // Index & Stock OI variables (averaged over selected period using most recent quarter date)
   const niftyCM = NIFTY_PCR_OI_FULL.CM;
   const bnkCM = BANKNIFTY_PCR_OI_FULL.CM;
@@ -8021,8 +8368,6 @@ function evalCustomMetric(
   const stockOIArr: ExtendedPCRBarData[] =
     sym && stockOIKey ? (stockPCROIFullCache[stockOIKey] ?? []) : [];
 
-  // Use most recent quarter's date for OI reference
-  const refDate = recent[0]?.quarterDate ?? new Date();
   const NiftyOI_PE = getQuarterlyOIValue(niftyCM, refDate, "peOI");
   const NiftyOI_CE = getQuarterlyOIValue(niftyCM, refDate, "ceOI");
   const NiftyPCR =
@@ -8061,7 +8406,7 @@ function evalCustomMetric(
       : 0;
 
   try {
-    const evalCode = `const Revenue=${avgRevenue};const NetProfit=${avgNetProfit};const EBITDA=${avgEBITDA};const EPS=${avgEPS};const EbitdaMargin=${avgEbitdaMargin};const NpMargin=${avgNpMargin};const NiftyClose=${NiftyClose};const MacroCPI=${MacroCPI};const MacroWPI=${MacroWPI};const FIIFlow=${FIIFlow};const MacroDII=${MacroDII};const MacroUSDINR=${MacroUSDINR};const MacroCrudeWTI=${MacroCrudeWTI};const MacroCrudeBrent=${MacroCrudeBrent};const Macro3YGsec=${Macro3YGsec};const Macro5YGsec=${Macro5YGsec};const Macro10YGsec=${Macro10YGsec};const MacroGDP=${MacroGDP};const MacroRepoRate=${MacroRepoRate};const MacroFXReserve=${MacroFXReserve};const NiftyOI_PE=${NiftyOI_PE};const NiftyOI_CE=${NiftyOI_CE};const NiftyPCR=${NiftyPCR};const BankNiftyOI_PE=${BankNiftyOI_PE};const BankNiftyOI_CE=${BankNiftyOI_CE};const BankNiftyPCR=${BankNiftyPCR};const StockOI_PE=${StockOI_PE};const StockOI_CE=${StockOI_CE};const StockPCR=${StockPCR};const StockClose=${StockClose};const StockVolume=${StockVolume};(${formula})`;
+    const evalCode = `const Revenue=${avgRevenue};const NetProfit=${avgNetProfit};const EBITDA=${avgEBITDA};const EPS=${avgEPS};const EbitdaMargin=${avgEbitdaMargin};const NpMargin=${avgNpMargin};const NiftyClose=${NiftyClose};const BankNiftyClose=${BankNiftyClose};const MacroCPI=${MacroCPI};const MacroWPI=${MacroWPI};const FIIFlow=${FIIFlow};const MacroDII=${MacroDII};const MacroUSDINR=${MacroUSDINR};const MacroCrudeWTI=${MacroCrudeWTI};const MacroCrudeBrent=${MacroCrudeBrent};const Macro3YGsec=${Macro3YGsec};const Macro5YGsec=${Macro5YGsec};const Macro10YGsec=${Macro10YGsec};const MacroGDP=${MacroGDP};const MacroRepoRate=${MacroRepoRate};const MacroFXReserve=${MacroFXReserve};const NiftyOI_PE=${NiftyOI_PE};const NiftyOI_CE=${NiftyOI_CE};const NiftyPCR=${NiftyPCR};const BankNiftyOI_PE=${BankNiftyOI_PE};const BankNiftyOI_CE=${BankNiftyOI_CE};const BankNiftyPCR=${BankNiftyPCR};const StockOI_PE=${StockOI_PE};const StockOI_CE=${StockOI_CE};const StockPCR=${StockPCR};const StockClose=${StockClose};const StockVolume=${StockVolume};(${formula})`;
     // biome-ignore lint/security/noGlobalEval: intentional formula evaluator for user-defined metrics
     const result = eval(evalCode);
     if (typeof result === "number" && Number.isFinite(result)) {
@@ -8194,9 +8539,27 @@ function AnalyticsMatrixPanel({ sym }: { sym: string }) {
   // Generate quarters internally
   const allQuarters = useMemo(() => genQuarterlyResults(sym), [sym]);
 
-  // --- Period inputs ---
-  const [numQuarters, setNumQuarters] = useState<number | "">(20);
-  const [numYears, setNumYears] = useState<number | "">("");
+  // --- Period inputs (persist per stock) ---
+  const [numQuarters, setNumQuarters] = useState<number | "">(() => {
+    try {
+      const saved = localStorage.getItem(`analytics_period_${sym}`);
+      if (saved) {
+        const p = JSON.parse(saved);
+        return p.numQuarters ?? 20;
+      }
+    } catch {}
+    return 20;
+  });
+  const [numYears, setNumYears] = useState<number | "">(() => {
+    try {
+      const saved = localStorage.getItem(`analytics_period_${sym}`);
+      if (saved) {
+        const p = JSON.parse(saved);
+        return p.numYears ?? "";
+      }
+    } catch {}
+    return "";
+  });
 
   const periodQuarters: number =
     numYears !== ""
@@ -8204,6 +8567,16 @@ function AnalyticsMatrixPanel({ sym }: { sym: string }) {
       : numQuarters !== ""
         ? Number(numQuarters)
         : 20;
+
+  // Persist period selection per stock
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `analytics_period_${sym}`,
+        JSON.stringify({ numQuarters, numYears }),
+      );
+    } catch {}
+  }, [sym, numQuarters, numYears]);
 
   const computeQuarters = useMemo(
     () => allQuarters.slice(0, Math.max(4, periodQuarters)),
@@ -8325,6 +8698,21 @@ function AnalyticsMatrixPanel({ sym }: { sym: string }) {
     } catch {
       setActiveGlobalMetricIds(new Set());
     }
+    // Restore period selection for this stock
+    try {
+      const savedPeriod = localStorage.getItem(`analytics_period_${sym}`);
+      if (savedPeriod) {
+        const p = JSON.parse(savedPeriod);
+        setNumQuarters(p.numQuarters ?? 20);
+        setNumYears(p.numYears ?? "");
+      } else {
+        setNumQuarters(20);
+        setNumYears("");
+      }
+    } catch {
+      setNumQuarters(20);
+      setNumYears("");
+    }
     setGlobalMetrics(loadGlobalMetrics());
     setShowAddForm(false);
     setEditingIdx(null);
@@ -8421,12 +8809,25 @@ function AnalyticsMatrixPanel({ sym }: { sym: string }) {
       error,
       isGlobal: true,
     };
-    // Save to global
+    // Save to global (formula stays in global library for reuse across stocks)
     const updatedGlobal = [...loadGlobalMetrics(), metric];
     saveGlobalMetrics(updatedGlobal);
     setGlobalMetrics(updatedGlobal);
     // Save to this stock's custom metrics too
     saveCustomMetrics([...customMetrics, metric]);
+    // Save computed result per stock (formula is global; result is stock-specific)
+    try {
+      const existingResults = JSON.parse(
+        localStorage.getItem(`custom_metric_results_${sym}`) ?? "{}",
+      );
+      existingResults[metric.id] = { value, error, computedAt: Date.now() };
+      localStorage.setItem(
+        `custom_metric_results_${sym}`,
+        JSON.stringify(existingResults),
+      );
+    } catch {
+      /* ignore */
+    }
     // Auto-activate for this stock
     const next = new Set(activeGlobalMetricIds);
     next.add(metric.id);
@@ -8615,7 +9016,24 @@ function AnalyticsMatrixPanel({ sym }: { sym: string }) {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-sm font-bold text-slate-100">Analytics Matrix</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-100">
+              Analytics Matrix
+            </h2>
+            <PanelInfoIcon
+              ocid="resultsanalytics.matrix.info_button"
+              title="Analytics Matrix Panel"
+              description="Computes financial metrics for the selected Nifty Total Market stock over a chosen time window. Metric names auto-update to reflect the selected period (e.g. 'Revenue CAGR (8Q)'). Results save per stock; formulas are shared across all stocks."
+              params={[
+                "# Quarters / # Years input — defines the analysis time window",
+                "Metric checklist — multi-select standard and custom metrics to display",
+                "Formula editor — edit/modify formulas for both standard and custom metrics",
+                "Macro variables — MacroCPI, MacroWPI, FIIFlow, MacroDII, MacroUSDINR, MacroCrudeWTI, MacroCrudeBrent, Macro3YGsec, Macro5YGsec, Macro10YGsec, MacroGDP, MacroRepoRate, MacroFXReserve",
+                "Index & OI variables — NiftyClose, BankNiftyClose, NiftyOI_PE, NiftyOI_CE, NiftyPCR, BankNiftyOI_PE, BankNiftyOI_CE, BankNiftyPCR, StockOI_PE, StockOI_CE, StockPCR, StockClose, StockVolume",
+                "Period selection auto-saves per stock",
+              ]}
+            />
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Pre-built metrics + custom formulas for {sym}
           </p>
@@ -8950,7 +9368,17 @@ function AnalyticsMatrixPanel({ sym }: { sym: string }) {
                     +(sPE / (sCE || 1)).toFixed(3);
                   const sData = getStockData(sym);
                   const sClose = sData[sData.length - 1]?.close ?? 0;
-                  return `NiftyOI_PE (${nPE.toLocaleString()}), NiftyOI_CE (${nCE.toLocaleString()}), NiftyPCR (${nPCR}), BankNiftyOI_PE (${bPE.toLocaleString()}), BankNiftyOI_CE (${bCE.toLocaleString()}), BankNiftyPCR (${bPCR}), StockOI_PE (${sPE.toLocaleString()}), StockOI_CE (${sCE.toLocaleString()}), StockPCR (${sPCR}), StockClose (${sClose.toFixed(0)}), StockVolume`;
+                  const nClose = getIndexCloseForPeriod(
+                    NIFTY_DATA,
+                    refD,
+                    periodQuarters,
+                  );
+                  const bClose = getIndexCloseForPeriod(
+                    BANKNIFTY_DATA,
+                    refD,
+                    periodQuarters,
+                  );
+                  return `NiftyClose (${nClose.toFixed(0)}), BankNiftyClose (${bClose.toFixed(0)}), NiftyOI_PE (${nPE.toLocaleString()}), NiftyOI_CE (${nCE.toLocaleString()}), NiftyPCR (${nPCR}), BankNiftyOI_PE (${bPE.toLocaleString()}), BankNiftyOI_CE (${bCE.toLocaleString()}), BankNiftyPCR (${bPCR}), StockOI_PE (${sPE.toLocaleString()}), StockOI_CE (${sCE.toLocaleString()}), StockPCR (${sPCR}), StockClose (${sClose.toFixed(0)}), StockVolume`;
                 })()}
               </span>
             </div>
@@ -9495,15 +9923,75 @@ const OI_VIZ_SERIES = [
     oiField: "peOI" as const,
     source: "stock_vol",
   },
+  {
+    key: "oi_nifty_close",
+    label: "Nifty50 Close",
+    color: "#fb923c",
+    oiField: "pcrRatio" as const,
+    source: "nifty_close",
+  },
+  {
+    key: "oi_bnk_close",
+    label: "BankNifty Close",
+    color: "#38bdf8",
+    oiField: "pcrRatio" as const,
+    source: "banknifty_close",
+  },
 ] as const;
 
 function VisualizationPanel({ sym }: { sym: string }) {
   // Generate quarters internally
   const allQuarters = useMemo(() => genQuarterlyResults(sym), [sym]);
 
-  // --- Period inputs (same as AnalyticsMatrixPanel) ---
-  const [numQuarters, setNumQuarters] = useState<number | "">(20);
-  const [numYears, setNumYears] = useState<number | "">("");
+  // --- Period inputs (persist per stock) ---
+  const [numQuarters, setNumQuarters] = useState<number | "">(() => {
+    try {
+      const saved = localStorage.getItem(`viz_period_${sym}`);
+      if (saved) {
+        const p = JSON.parse(saved);
+        return p.numQuarters ?? 20;
+      }
+    } catch {}
+    return 20;
+  });
+  const [numYears, setNumYears] = useState<number | "">(() => {
+    try {
+      const saved = localStorage.getItem(`viz_period_${sym}`);
+      if (saved) {
+        const p = JSON.parse(saved);
+        return p.numYears ?? "";
+      }
+    } catch {}
+    return "";
+  });
+
+  // Persist viz period selection per stock
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        `viz_period_${sym}`,
+        JSON.stringify({ numQuarters, numYears }),
+      );
+    } catch {}
+  }, [sym, numQuarters, numYears]);
+
+  // Restore viz period when sym changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`viz_period_${sym}`);
+      if (saved) {
+        const p = JSON.parse(saved);
+        setNumQuarters(p.numQuarters ?? 20);
+        setNumYears(p.numYears ?? "");
+      } else {
+        setNumQuarters(20);
+        setNumYears("");
+      }
+    } catch {
+      setNumQuarters(20);
+      setNumYears("");
+    }
+  }, [sym]);
 
   const periodQuarters: number =
     numYears !== ""
@@ -9719,6 +10207,18 @@ function VisualizationPanel({ sym }: { sym: string }) {
                     rows.reduce((s, d) => s + d.volume, 0) / rows.length,
                   )
                 : 0;
+          } else if (os.source === "nifty_close") {
+            val = getIndexCloseForPeriod(
+              NIFTY_DATA,
+              q.quarterDate,
+              periodQuarters,
+            );
+          } else if (os.source === "banknifty_close") {
+            val = getIndexCloseForPeriod(
+              BANKNIFTY_DATA,
+              q.quarterDate,
+              periodQuarters,
+            );
           }
           base[os.key] = val;
         }
@@ -9878,7 +10378,22 @@ function VisualizationPanel({ sym }: { sym: string }) {
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-sm font-bold text-slate-100">Visualization</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-100">Visualization</h2>
+            <PanelInfoIcon
+              ocid="resultsanalytics.viz.info_button"
+              title="Visualization Panel"
+              description="Plots selected metrics as bar, line, or composed chart for the selected stock. Supports multi-select conditions from the Analytics Matrix. All series auto-aggregated to the selected period."
+              params={[
+                "Chart type toggle — Bar / Line / Composed",
+                "# Quarters / # Years input — defines the analysis time window",
+                "Conditions dropdown — multi-select standard, custom, and macro metrics to plot",
+                "Macro Indicators — CPI, WPI, FII Flow, DII Flow, USD/INR, Crude WTI/Brent, G-Sec 10Y, GDP, Repo Rate, FX Reserve",
+                "Index & Stock OI — Nifty/BankNifty PCR, PE/CE OI, Close, Volume; Stock PCR, PE/CE OI, Close, Volume",
+                "Dual Y-axis — financials on left, margin/ratio series on right",
+              ]}
+            />
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Last {periodLabel} ({display.length} quarters) — {sym}
           </p>
@@ -10434,6 +10949,395 @@ function VisualizationPanel({ sym }: { sym: string }) {
   );
 }
 
+// ─── Workflow Prompt Code Generator ──────────────────────────────────────────
+const WORKFLOW_LANGUAGES = [
+  "Python",
+  "JavaScript",
+  "TypeScript",
+  "R",
+  "SQL",
+  "Julia",
+  "Scala",
+  "Java",
+  "C++",
+  "C#",
+  "Go",
+  "Rust",
+  "MATLAB",
+  "Ruby",
+  "Kotlin",
+  "Swift",
+];
+
+function getCommentChar(lang: string): string {
+  switch (lang) {
+    case "SQL":
+      return "--";
+    case "MATLAB":
+      return "%";
+    default:
+      if (
+        [
+          "JavaScript",
+          "TypeScript",
+          "Java",
+          "C++",
+          "C#",
+          "Go",
+          "Kotlin",
+          "Swift",
+          "Rust",
+          "Scala",
+        ].includes(lang)
+      )
+        return "//";
+      return "#";
+  }
+}
+
+function generateCodePrompt(description: string, language: string): string {
+  const c = getCommentChar(language);
+  const now = new Date().toISOString().split("T")[0];
+
+  const availableVars = [
+    "Revenue",
+    "NetProfit",
+    "EBITDA",
+    "EPS",
+    "NiftyClose",
+    "BankNiftyClose",
+    "StockClose",
+    "StockVolume",
+    "MacroCPI",
+    "MacroWPI",
+    "FIIFlow",
+    "DIIFlow",
+    "MacroRepoRate",
+    "USDINR",
+    "CrudeWTI",
+  ];
+
+  const header = [
+    `${c} ════════════════════════════════════════════════════`,
+    `${c}  Auto-generated workflow scaffold`,
+    `${c}  Language : ${language}`,
+    `${c}  Date     : ${now}`,
+    `${c}  Task     : ${description}`,
+    `${c} ════════════════════════════════════════════════════`,
+    "",
+    `${c} Available data variables:`,
+    ...availableVars.map((v) => `${c}   ${v}`),
+    "",
+  ].join("\n");
+
+  // Derive logical steps from description (simple keyword-based decomposition)
+  const steps: string[] = [];
+  const lower = description.toLowerCase();
+  if (lower.includes("cagr"))
+    steps.push("Step 1: Compute CAGR over the selected period");
+  if (lower.includes("compare") || lower.includes("comparison"))
+    steps.push("Step 2: Compare computed values across data sources");
+  if (
+    lower.includes("flag") ||
+    lower.includes("signal") ||
+    lower.includes("alert")
+  )
+    steps.push("Step 3: Apply threshold/flag conditions");
+  if (lower.includes("nifty") || lower.includes("index"))
+    steps.push(
+      "Step 4: Correlate with Index (NiftyClose / BankNiftyClose) data",
+    );
+  if (
+    lower.includes("macro") ||
+    lower.includes("cpi") ||
+    lower.includes("gdp") ||
+    lower.includes("repo")
+  )
+    steps.push("Step 5: Integrate Macro Indicator variables");
+  if (lower.includes("fii") || lower.includes("dii"))
+    steps.push("Step 6: Incorporate FII/DII flow data");
+  if (
+    lower.includes("plot") ||
+    lower.includes("chart") ||
+    lower.includes("visual")
+  )
+    steps.push("Step 7: Prepare output for Visualization Panel");
+  if (steps.length === 0) {
+    steps.push(
+      "Step 1: Load and validate input data",
+      "Step 2: Apply the described logic / transformation",
+      "Step 3: Aggregate results over the selected period",
+      "Step 4: Return final computed output",
+    );
+  }
+
+  let body = "";
+
+  if (language === "Python") {
+    body = [
+      "import pandas as pd",
+      "import numpy as np",
+      "",
+      "def run_analysis(data: dict) -> dict:",
+      '    """',
+      `    ${description}`,
+      `    """`,
+      ...steps.map((s) => `    ${c} ${s}`),
+      "",
+      "    # --- Load variables ---",
+      ...availableVars
+        .slice(0, 5)
+        .map((v) => `    ${v.toLowerCase()} = data.get("${v}", [])`),
+      "",
+      "    # --- Core logic ---",
+      "    result = {}",
+      "",
+      "    # TODO: implement your logic here",
+      "",
+      "    return result",
+    ].join("\n");
+  } else if (language === "R") {
+    body = [
+      "library(dplyr)",
+      "",
+      "run_analysis <- function(data) {",
+      `  # ${description}`,
+      ...steps.map((s) => `  # ${s}`),
+      "",
+      "  # Load variables",
+      ...availableVars
+        .slice(0, 5)
+        .map((v) => `  ${v.toLowerCase()} <- data[["${v}"]]`),
+      "",
+      "  # Core logic",
+      "  result <- list()",
+      "",
+      "  # TODO: implement your logic here",
+      "",
+      "  return(result)",
+      "}",
+    ].join("\n");
+  } else if (language === "SQL") {
+    body = [
+      `-- Analysis: ${description}`,
+      ...steps.map((s) => `-- ${s}`),
+      "",
+      "SELECT",
+      "    symbol,",
+      "    quarter,",
+      "    Revenue,",
+      "    NetProfit,",
+      "    NiftyClose,",
+      "    -- TODO: add computed columns here",
+      "    ROUND(CAST(NetProfit AS FLOAT) / NULLIF(Revenue, 0) * 100, 2) AS NP_Margin",
+      "FROM financial_data",
+      "WHERE symbol = :selected_symbol",
+      "  -- TODO: add filter conditions here",
+      "ORDER BY quarter DESC;",
+    ].join("\n");
+  } else if (language === "MATLAB") {
+    body = [
+      `% ${description}`,
+      ...steps.map((s) => `% ${s}`),
+      "",
+      "function result = run_analysis(data)",
+      "    % Load variables",
+      ...availableVars
+        .slice(0, 5)
+        .map((v) => `    ${v.toLowerCase()} = data.${v};`),
+      "",
+      "    % Core logic",
+      "    result = struct();",
+      "",
+      "    % TODO: implement your logic here",
+      "end",
+    ].join("\n");
+  } else if (language === "Julia") {
+    body = [
+      `# ${description}`,
+      ...steps.map((s) => `# ${s}`),
+      "",
+      "function run_analysis(data::Dict)",
+      ...availableVars
+        .slice(0, 5)
+        .map((v) => `    ${v.toLowerCase()} = get(data, :${v}, [])`),
+      "",
+      "    # Core logic",
+      "    result = Dict()",
+      "",
+      "    # TODO: implement your logic here",
+      "",
+      "    return result",
+      "end",
+    ].join("\n");
+  } else {
+    // JS / TS / Java / C++ / C# / Go / Rust / Scala / Kotlin / Swift / Ruby
+    const isTS = language === "TypeScript";
+    const isJava = ["Java", "C#", "Kotlin", "Scala"].includes(language);
+    const isCpp = language === "C++";
+    const isRuby = language === "Ruby";
+    const isGo = language === "Go";
+    const isRust = language === "Rust";
+    const isSwift = language === "Swift";
+
+    if (isJava) {
+      body = [
+        `${c} ${description}`,
+        ...steps.map((s) => `${c} ${s}`),
+        "",
+        "public Map<String, Object> runAnalysis(Map<String, Object> data) {",
+        "    // Load variables",
+        ...availableVars
+          .slice(0, 5)
+          .map((v) => `    Object ${v.toLowerCase()} = data.get("${v}");`),
+        "",
+        "    // Core logic",
+        "    Map<String, Object> result = new HashMap<>();",
+        "",
+        "    // TODO: implement your logic here",
+        "",
+        "    return result;",
+        "}",
+      ].join("\n");
+    } else if (isCpp) {
+      body = [
+        `${c} ${description}`,
+        ...steps.map((s) => `${c} ${s}`),
+        "",
+        "#include <map>",
+        "#include <string>",
+        "#include <variant>",
+        "",
+        "using DataMap = std::map<std::string, double>;",
+        "",
+        "DataMap runAnalysis(const DataMap& data) {",
+        "    // Load variables",
+        ...availableVars
+          .slice(0, 5)
+          .map(
+            (v) =>
+              `    double ${v.toLowerCase()} = data.count("${v}") ? data.at("${v}") : 0.0;`,
+          ),
+        "",
+        "    // Core logic",
+        "    DataMap result;",
+        "",
+        "    // TODO: implement your logic here",
+        "",
+        "    return result;",
+        "}",
+      ].join("\n");
+    } else if (isGo) {
+      body = [
+        `${c} ${description}`,
+        ...steps.map((s) => `${c} ${s}`),
+        "",
+        "func RunAnalysis(data map[string]float64) map[string]float64 {",
+        "    // Load variables",
+        ...availableVars
+          .slice(0, 5)
+          .map((v) => `    ${v.toLowerCase()} := data["${v}"]`),
+        "",
+        "    // Core logic",
+        "    result := make(map[string]float64)",
+        "",
+        "    // TODO: implement your logic here",
+        "",
+        "    return result",
+        "}",
+      ].join("\n");
+    } else if (isRust) {
+      body = [
+        `${c} ${description}`,
+        ...steps.map((s) => `${c} ${s}`),
+        "",
+        "use std::collections::HashMap;",
+        "",
+        "pub fn run_analysis(data: &HashMap<String, f64>) -> HashMap<String, f64> {",
+        "    // Load variables",
+        ...availableVars
+          .slice(0, 5)
+          .map(
+            (v) =>
+              `    let ${v.toLowerCase()} = *data.get("${v}").unwrap_or(&0.0);`,
+          ),
+        "",
+        "    // Core logic",
+        "    let mut result: HashMap<String, f64> = HashMap::new();",
+        "",
+        "    // TODO: implement your logic here",
+        "",
+        "    result",
+        "}",
+      ].join("\n");
+    } else if (isSwift) {
+      body = [
+        `${c} ${description}`,
+        ...steps.map((s) => `${c} ${s}`),
+        "",
+        "func runAnalysis(data: [String: Double]) -> [String: Double] {",
+        "    // Load variables",
+        ...availableVars
+          .slice(0, 5)
+          .map((v) => `    let ${v.toLowerCase()} = data["${v}"] ?? 0.0`),
+        "",
+        "    // Core logic",
+        "    var result: [String: Double] = [:]",
+        "",
+        "    // TODO: implement your logic here",
+        "",
+        "    return result",
+        "}",
+      ].join("\n");
+    } else if (isRuby) {
+      body = [
+        `# ${description}`,
+        ...steps.map((s) => `# ${s}`),
+        "",
+        "def run_analysis(data)",
+        ...availableVars
+          .slice(0, 5)
+          .map((v) => `  ${v.toLowerCase()} = data[:${v}]`),
+        "",
+        "  # Core logic",
+        "  result = {}",
+        "",
+        "  # TODO: implement your logic here",
+        "",
+        "  result",
+        "end",
+      ].join("\n");
+    } else {
+      // JavaScript / TypeScript
+      const typeAnnotation = isTS ? ": Record<string, unknown>" : "";
+      const paramType = isTS ? "(data: Record<string, number>)" : "(data)";
+      body = [
+        `${c} ${description}`,
+        ...steps.map((s) => `${c} ${s}`),
+        "",
+        `function runAnalysis${paramType}${isTS ? ": Record<string, number>" : ""} {`,
+        "  // Load variables",
+        ...availableVars
+          .slice(0, 5)
+          .map(
+            (v) =>
+              `  const ${v.toLowerCase()}${isTS ? ": number" : ""} = data["${v}"] ?? 0;`,
+          ),
+        "",
+        "  // Core logic",
+        `  const result${typeAnnotation} = {};`,
+        "",
+        "  // TODO: implement your logic here",
+        "",
+        "  return result;",
+        "}",
+      ].join("\n");
+    }
+  }
+
+  return `${header}${body}\n`;
+}
+
 // ─── Custom Logic Store ───────────────────────────────────────────────────────
 function CustomLogicStore({ sym }: { sym: string }) {
   const [logic, setLogic] = useState<string>(() => {
@@ -10447,6 +11351,12 @@ function CustomLogicStore({ sym }: { sym: string }) {
   const [savedMsg, setSavedMsg] = useState(false);
   const [saveCounter, setSaveCounter] = useState(0);
   const [loadFromSym, setLoadFromSym] = useState("");
+
+  // Workflow Prompt Generator state
+  const [plainEnglishPrompt, setPlainEnglishPrompt] = useState("");
+  const [selectedLanguage, setSelectedLanguage] = useState("Python");
+  const [showConfirmGen, setShowConfirmGen] = useState(false);
+  const [genSuccessMsg, setGenSuccessMsg] = useState(false);
 
   // Count how many symbols have saved logic — re-runs after saves
   // biome-ignore lint/correctness/useExhaustiveDependencies: saveCounter triggers localStorage re-scan intentionally
@@ -10522,6 +11432,24 @@ function CustomLogicStore({ sym }: { sym: string }) {
       >
         <div className="flex items-center gap-2">
           <span>Custom Logic &amp; Notes</span>
+          <span
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <PanelInfoIcon
+              ocid="stockresults.logic.info_button"
+              title="Custom Logic & Notes Panel"
+              description="Plain text notes and custom formula storage per stock. Notes and logic save per stock; formulas remain globally available for reuse. Includes a Workflow Prompt Generator to convert plain English analysis descriptions into code."
+              params={[
+                "Notes textarea — plain text saved per stock to browser storage",
+                "Logic editor — write custom formulas and calculations",
+                "Save button — persists logic for this stock",
+                "Load from another stock — copy logic saved from any other stock",
+                "Workflow Prompt Generator — describe analysis in plain English, choose from 16 languages, confirm to generate code scaffold",
+                "Supported languages: Python, JavaScript, TypeScript, R, SQL, Julia, Scala, Java, C++, C#, Go, Rust, MATLAB, Ruby, Kotlin, Swift",
+              ]}
+            />
+          </span>
           {savedCount > 0 && (
             <span className="text-xs bg-purple-950 text-purple-400 border border-purple-800 px-2 py-0.5 rounded-full">
               Logic saved for {savedCount} stock{savedCount !== 1 ? "s" : ""}
@@ -10534,51 +11462,599 @@ function CustomLogicStore({ sym }: { sym: string }) {
       </button>
 
       {isOpen && (
-        <div className="mt-4 space-y-3">
-          <div className="text-xs text-slate-500">
-            Write custom JS/Python-style formulas, notes, and logic for{" "}
-            <span className="text-blue-400 font-medium">{sym}</span>. Logic is
-            saved per-stock in your browser.
-          </div>
+        <div className="mt-4 space-y-4">
+          {/* ── Workflow Prompt Generator ── */}
+          <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4 space-y-3">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
+                <span className="text-purple-400">⚡</span>
+                Workflow Prompt Generator
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Describe your analysis in plain English, then convert it to
+                code.
+              </p>
+            </div>
 
-          <textarea
-            value={logic}
-            onChange={(e) => setLogic(e.target.value)}
-            data-ocid="stockresults.logic.textarea"
-            placeholder={`// Custom logic for ${sym}\n// Example:\n// const peRatio = Revenue / NetProfit;\n// const growthScore = (revCAGR + npCAGR) / 2;\n// Logic is stored per-stock and can be recalled across stocks`}
-            rows={10}
-            className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs font-mono rounded-lg px-3 py-2.5 outline-none focus:border-blue-500 transition-colors resize-y"
-          />
+            <div className="space-y-2">
+              <label
+                htmlFor="workflow-prompt-textarea"
+                className="text-xs text-slate-400 font-medium"
+              >
+                Plain English Description
+              </label>
+              <textarea
+                id="workflow-prompt-textarea"
+                value={plainEnglishPrompt}
+                onChange={(e) => setPlainEnglishPrompt(e.target.value)}
+                data-ocid="stockresults.logic.prompt_input"
+                placeholder={
+                  "Describe your workflow in plain English...\nExample: Calculate the 5-year revenue CAGR and compare it with the Nifty close price movement"
+                }
+                rows={4}
+                className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2.5 outline-none focus:border-purple-500 transition-colors resize-y placeholder:text-slate-600"
+              />
+            </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              data-ocid="stockresults.logic.save_button"
-              onClick={saveLogic}
-              className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
-            >
-              {savedMsg ? "✓ Saved!" : "Save Logic"}
-            </button>
-
-            {symsWithLogic.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500">Load from:</span>
-                <select
-                  value={loadFromSym}
-                  onChange={(e) => loadFromOther(e.target.value)}
-                  data-ocid="stockresults.logic.select"
-                  className={`${selectCls} text-xs`}
+                <label
+                  htmlFor="workflow-lang-select"
+                  className="text-xs text-slate-400 font-medium whitespace-nowrap"
                 >
-                  <option value="">-- Select stock --</option>
-                  {symsWithLogic.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
+                  Target Language
+                </label>
+                <select
+                  id="workflow-lang-select"
+                  value={selectedLanguage}
+                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  data-ocid="stockresults.logic.lang_select"
+                  className={selectCls}
+                >
+                  {WORKFLOW_LANGUAGES.map((lang) => (
+                    <option key={lang} value={lang}>
+                      {lang}
                     </option>
                   ))}
                 </select>
               </div>
+
+              <button
+                type="button"
+                data-ocid="stockresults.logic.generate_button"
+                disabled={plainEnglishPrompt.trim().length === 0}
+                onClick={() => setShowConfirmGen(true)}
+                className="px-4 py-1.5 text-xs bg-purple-700 text-white rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                <span>✦</span> Generate Prompt
+              </button>
+
+              {genSuccessMsg && (
+                <span
+                  data-ocid="stockresults.logic.success_state"
+                  className="text-xs text-emerald-400 font-medium animate-pulse"
+                >
+                  ✓ Prompt generated and added to logic editor
+                </span>
+              )}
+            </div>
+
+            {/* Inline Confirmation Dialog */}
+            {showConfirmGen && (
+              <div
+                data-ocid="stockresults.logic.dialog"
+                className="rounded-lg border border-purple-700/60 bg-slate-900 p-4 space-y-3 shadow-lg shadow-purple-950/40"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-slate-100">
+                    Convert to{" "}
+                    <span className="text-purple-400">{selectedLanguage}</span>?
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1 italic border-l-2 border-slate-600 pl-3">
+                    &ldquo;
+                    {plainEnglishPrompt.length > 200
+                      ? `${plainEnglishPrompt.slice(0, 200)}…`
+                      : plainEnglishPrompt}
+                    &rdquo;
+                  </p>
+                </div>
+                <p className="text-xs text-slate-500">
+                  The generated code scaffold will be appended to your logic
+                  editor below.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    data-ocid="stockresults.logic.confirm_button"
+                    onClick={() => {
+                      const c = getCommentChar(selectedLanguage);
+                      const generated = generateCodePrompt(
+                        plainEnglishPrompt,
+                        selectedLanguage,
+                      );
+                      const separator = `\n\n${c} ─── Generated from Workflow Prompt ───\n${c} ${plainEnglishPrompt}\n\n`;
+                      setLogic((prev) => prev + separator + generated);
+                      setShowConfirmGen(false);
+                      setPlainEnglishPrompt("");
+                      setGenSuccessMsg(true);
+                      setTimeout(() => setGenSuccessMsg(false), 2000);
+                    }}
+                    className="px-4 py-1.5 text-xs bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition-colors font-medium"
+                  >
+                    ✦ Confirm &amp; Generate
+                  </button>
+                  <button
+                    type="button"
+                    data-ocid="stockresults.logic.cancel_button"
+                    onClick={() => setShowConfirmGen(false)}
+                    className="px-4 py-1.5 text-xs bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             )}
           </div>
+
+          {/* ── Notes & Formula Editor ── */}
+          <div className="space-y-2">
+            <div className="text-xs text-slate-500">
+              Write custom JS/Python-style formulas, notes, and logic for{" "}
+              <span className="text-blue-400 font-medium">{sym}</span>. Logic is
+              saved per-stock in your browser.
+            </div>
+
+            <textarea
+              value={logic}
+              onChange={(e) => setLogic(e.target.value)}
+              data-ocid="stockresults.logic.textarea"
+              placeholder={`// Custom logic for ${sym}\n// Example:\n// const peRatio = Revenue / NetProfit;\n// const growthScore = (revCAGR + npCAGR) / 2;\n// Logic is stored per-stock and can be recalled across stocks`}
+              rows={10}
+              className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs font-mono rounded-lg px-3 py-2.5 outline-none focus:border-blue-500 transition-colors resize-y"
+            />
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                data-ocid="stockresults.logic.save_button"
+                onClick={saveLogic}
+                className="px-4 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+              >
+                {savedMsg ? "✓ Saved!" : "Save Logic"}
+              </button>
+
+              {symsWithLogic.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">Load from:</span>
+                  <select
+                    value={loadFromSym}
+                    onChange={(e) => loadFromOther(e.target.value)}
+                    data-ocid="stockresults.logic.select"
+                    className={`${selectCls} text-xs`}
+                  >
+                    <option value="">-- Select stock --</option>
+                    {symsWithLogic.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ─── Summary & Trigger Panel ─────────────────────────────────────────────────
+
+interface SummaryMetricTile {
+  id: string;
+  label: string;
+  formula?: string;
+  metricKey?: string; // base key for standard metrics
+  triggerAbove?: number;
+  triggerBelow?: number;
+}
+
+function SummaryTriggerPanel({ sym }: { sym: string }) {
+  // Read period from analytics_period storage (stays in sync with AnalyticsMatrixPanel)
+  const periodQuarters: number = (() => {
+    try {
+      const saved = localStorage.getItem(`analytics_period_${sym}`);
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (p.numYears) return Number(p.numYears) * 4;
+        if (p.numQuarters) return Number(p.numQuarters);
+      }
+    } catch {}
+    return 20;
+  })();
+
+  const allQuarters = useMemo(() => genQuarterlyResults(sym), [sym]);
+  const computeQuarters = useMemo(
+    () => allQuarters.slice(0, Math.max(4, periodQuarters)),
+    [allQuarters, periodQuarters],
+  );
+
+  const [panelMetrics, setPanelMetrics] = useState<SummaryMetricTile[]>(() => {
+    try {
+      const saved = localStorage.getItem(`summary_panel_metrics_${sym}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [showAddPicker, setShowAddPicker] = useState(false);
+  const [addPickerValue, setAddPickerValue] = useState("");
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newFormula, setNewFormula] = useState("");
+
+  // Reload when sym changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`summary_panel_metrics_${sym}`);
+      setPanelMetrics(saved ? JSON.parse(saved) : []);
+    } catch {
+      setPanelMetrics([]);
+    }
+    setIsEditMode(false);
+    setShowAddPicker(false);
+    setShowNewForm(false);
+    setAddPickerValue("");
+    setNewLabel("");
+    setNewFormula("");
+  }, [sym]);
+
+  const savePanelMetrics = useCallback(
+    (tiles: SummaryMetricTile[]) => {
+      setPanelMetrics(tiles);
+      try {
+        localStorage.setItem(
+          `summary_panel_metrics_${sym}`,
+          JSON.stringify(tiles),
+        );
+      } catch {}
+    },
+    [sym],
+  );
+
+  // Compute values for each tile
+  const builtinMetricsCache = useMemo(
+    () => computeBuiltinMetrics(computeQuarters, periodQuarters),
+    [computeQuarters, periodQuarters],
+  );
+
+  const tileValues = useMemo(() => {
+    return panelMetrics.map((tile) => {
+      // Standard metric by base key
+      if (tile.metricKey) {
+        const found = builtinMetricsCache.find(
+          (m) => metricBaseKey(m.name) === tile.metricKey,
+        );
+        if (found) return { value: found.value, error: null };
+      }
+      // Custom formula evaluation
+      if (tile.formula) {
+        const { value, error } = evalCustomMetric(
+          tile.formula,
+          computeQuarters,
+          sym,
+          periodQuarters,
+        );
+        return { value: value !== null ? String(value) : null, error };
+      }
+      // Stored result fallback
+      try {
+        const results = JSON.parse(
+          localStorage.getItem(`custom_metric_results_${sym}`) ?? "{}",
+        );
+        const stored = results[tile.id];
+        if (stored)
+          return {
+            value: stored.value !== null ? String(stored.value) : null,
+            error: stored.error,
+          };
+      } catch {}
+      return { value: null, error: "No formula or key" };
+    });
+  }, [panelMetrics, builtinMetricsCache, computeQuarters, sym, periodQuarters]);
+
+  const handleAddFromPicker = (val: string) => {
+    if (!val || val === "new") return;
+    // Standard metric
+    const stdKey = STANDARD_METRIC_BASE_KEYS.find((k) => k === val);
+    if (stdKey) {
+      const newTile: SummaryMetricTile = {
+        id: `std_${stdKey}_${Date.now()}`,
+        label: stdKey,
+        metricKey: stdKey,
+      };
+      savePanelMetrics([...panelMetrics, newTile]);
+      setAddPickerValue("");
+      return;
+    }
+    // Global custom metric
+    const globalMetrics = loadGlobalMetrics();
+    const gm = globalMetrics.find((m) => m.id === val);
+    if (gm) {
+      const newTile: SummaryMetricTile = {
+        id: `gm_${gm.id}_${Date.now()}`,
+        label: gm.name,
+        formula: gm.formula,
+      };
+      savePanelMetrics([...panelMetrics, newTile]);
+      setAddPickerValue("");
+    }
+  };
+
+  const handleSaveNewMetric = () => {
+    if (!newLabel.trim() || !newFormula.trim()) return;
+    // Save to global library
+    const metric: CustomMetric = {
+      id: `${Date.now()}`,
+      name: newLabel.trim(),
+      formula: newFormula.trim(),
+      value: null,
+      error: null,
+      isGlobal: true,
+    };
+    const updatedGlobal = [...loadGlobalMetrics(), metric];
+    saveGlobalMetrics(updatedGlobal);
+    // Add to panel
+    const newTile: SummaryMetricTile = {
+      id: `new_${metric.id}`,
+      label: metric.name,
+      formula: metric.formula,
+    };
+    savePanelMetrics([...panelMetrics, newTile]);
+    setNewLabel("");
+    setNewFormula("");
+    setShowNewForm(false);
+    setAddPickerValue("");
+  };
+
+  const getTriggerDot = (tile: SummaryMetricTile, val: string | null) => {
+    if (val === null) return null;
+    const num = Number.parseFloat(val);
+    if (Number.isNaN(num)) return null;
+    if (tile.triggerAbove !== undefined && num > tile.triggerAbove)
+      return "green";
+    if (tile.triggerBelow !== undefined && num < tile.triggerBelow)
+      return "red";
+    return null;
+  };
+
+  const globalMetricsList = useMemo(() => loadGlobalMetrics(), []);
+
+  return (
+    <Card data-ocid="summary.panel">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-100">
+              Summary &amp; Trigger Panel
+            </h2>
+            <PanelInfoIcon
+              ocid="summary.info_button"
+              title="Summary & Trigger Panel"
+              description="Customizable tile grid showing key metrics for the selected stock. Each tile can display a standard or custom metric with an optional trigger threshold."
+              params={[
+                "Add metric — pick from standard or custom metrics via dropdown",
+                "Trigger threshold — set a value; green dot = above threshold, red dot = below threshold",
+                "Remove tile — delete individual metric tiles in edit mode",
+                "Edit Panel button — toggle edit mode to add/remove/configure tiles",
+                "Layout auto-saves per stock — switching stocks restores each stock's own tile configuration",
+              ]}
+            />
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Quick overview for{" "}
+            <span className="text-blue-400 font-medium">{sym}</span> —{" "}
+            {periodQuarters}Q period
+          </p>
+        </div>
+        <button
+          type="button"
+          data-ocid="summary.edit_button"
+          onClick={() => {
+            setIsEditMode((e) => !e);
+            if (isEditMode) {
+              setShowAddPicker(false);
+              setShowNewForm(false);
+            }
+          }}
+          className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${isEditMode ? "bg-amber-600 border-amber-600 text-white" : "border-slate-600 text-slate-400 hover:border-amber-500 hover:text-amber-400"}`}
+        >
+          {isEditMode ? "✓ Done Editing" : "✎ Edit Panel"}
+        </button>
+      </div>
+
+      {panelMetrics.length === 0 && !isEditMode && (
+        <div
+          className="py-8 text-center text-slate-500 text-sm"
+          data-ocid="summary.empty_state"
+        >
+          No metrics added yet.{" "}
+          <button
+            type="button"
+            onClick={() => setIsEditMode(true)}
+            className="text-blue-400 hover:text-blue-300 underline"
+          >
+            Click Edit Panel
+          </button>{" "}
+          to add metrics.
+        </div>
+      )}
+
+      {/* Tiles Grid */}
+      {(panelMetrics.length > 0 || isEditMode) && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {panelMetrics.map((tile, idx) => {
+            const tv = tileValues[idx];
+            const dotColor = getTriggerDot(tile, tv?.value ?? null);
+            return (
+              <div
+                key={tile.id}
+                data-ocid={`summary.metric_tile.${idx + 1}`}
+                className="relative bg-slate-800 border border-slate-700 rounded-xl p-3 flex flex-col gap-1 hover:border-slate-600 transition-colors"
+              >
+                {isEditMode && (
+                  <button
+                    type="button"
+                    data-ocid={`summary.delete_button.${idx + 1}`}
+                    onClick={() =>
+                      savePanelMetrics(panelMetrics.filter((_, i) => i !== idx))
+                    }
+                    className="absolute top-1.5 right-1.5 w-5 h-5 flex items-center justify-center text-red-400 hover:text-red-300 hover:bg-red-950 rounded-full text-xs transition-colors"
+                    title="Remove"
+                  >
+                    ×
+                  </button>
+                )}
+                <div className="flex items-center gap-1.5">
+                  {dotColor && (
+                    <span
+                      className={`w-2 h-2 rounded-full ${dotColor === "green" ? "bg-green-400" : "bg-red-400"}`}
+                    />
+                  )}
+                  <span className="text-xs text-slate-400 truncate">
+                    {tile.label}
+                  </span>
+                </div>
+                {tv?.error ? (
+                  <span className="text-xs text-red-400 font-mono truncate">
+                    Error
+                  </span>
+                ) : (
+                  <span className="text-lg font-bold text-slate-100 tabular-nums">
+                    {tv?.value ?? "—"}
+                  </span>
+                )}
+                {tile.metricKey && (
+                  <span className="text-xs text-blue-500">standard</span>
+                )}
+                {tile.formula && !tile.metricKey && (
+                  <span className="text-xs text-purple-500 truncate font-mono">
+                    {tile.formula.slice(0, 30)}
+                    {tile.formula.length > 30 ? "…" : ""}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Add Metric tile (edit mode) */}
+          {isEditMode && (
+            <div className="bg-slate-800/50 border border-dashed border-slate-600 rounded-xl p-3 flex flex-col items-center justify-center gap-2">
+              {!showAddPicker && !showNewForm && (
+                <button
+                  type="button"
+                  data-ocid="summary.add_button"
+                  onClick={() => setShowAddPicker(true)}
+                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+                >
+                  + Add Metric
+                </button>
+              )}
+
+              {showAddPicker && !showNewForm && (
+                <div className="w-full space-y-2">
+                  <select
+                    value={addPickerValue}
+                    data-ocid="summary.picker.select"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setAddPickerValue(v);
+                      if (v === "new") {
+                        setShowNewForm(true);
+                      } else {
+                        handleAddFromPicker(v);
+                      }
+                    }}
+                    className={`${selectCls} w-full text-xs`}
+                  >
+                    <option value="">— Select metric —</option>
+                    <optgroup label="Standard Metrics">
+                      {STANDARD_METRIC_BASE_KEYS.map((k) => (
+                        <option key={k} value={k}>
+                          {k}
+                        </option>
+                      ))}
+                    </optgroup>
+                    {globalMetricsList.length > 0 && (
+                      <optgroup label="Custom / Global Metrics">
+                        {globalMetricsList.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="Define New">
+                      <option value="new">── Define New Metric ──</option>
+                    </optgroup>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddPicker(false)}
+                    className="text-xs text-slate-500 hover:text-slate-300"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              {showNewForm && (
+                <div className="w-full space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Metric name"
+                    value={newLabel}
+                    data-ocid="summary.new_metric.input"
+                    onChange={(e) => setNewLabel(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-600 text-slate-200 text-xs rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition-colors"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Formula (e.g. Revenue / NetProfit)"
+                    value={newFormula}
+                    data-ocid="summary.new_formula.input"
+                    onChange={(e) => setNewFormula(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-600 text-slate-200 text-xs rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 transition-colors font-mono"
+                  />
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      data-ocid="summary.save_button"
+                      onClick={handleSaveNewMetric}
+                      className="flex-1 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors"
+                    >
+                      Save &amp; Add
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewForm(false);
+                        setShowAddPicker(false);
+                        setAddPickerValue("");
+                        setNewLabel("");
+                        setNewFormula("");
+                      }}
+                      className="flex-1 py-1.5 text-xs border border-slate-600 text-slate-400 rounded-lg hover:border-slate-500 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </Card>
@@ -10608,6 +12084,9 @@ function TabStockResults() {
           <IndexMembershipBadges sym={sym} />
         </div>
       </Card>
+
+      {/* Panel 0: Summary & Trigger (first panel for each stock) */}
+      <SummaryTriggerPanel sym={sym} />
 
       {/* Panel 1: Analytics Matrix */}
       <AnalyticsMatrixPanel sym={sym} />
